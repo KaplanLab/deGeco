@@ -1,3 +1,4 @@
+from __future__ import division
 import numpy as np
 import scipy as sp
 from scipy import optimize
@@ -5,6 +6,7 @@ import time
 import argparse
 import cooler
 import matplotlib
+import os
 matplotlib.use('Agg')
 
 start_time = time.time()  # Initial time point to measure function performances
@@ -65,6 +67,104 @@ def evaluation_of_likelihood_gradient(variables, *args):
     return likelihood_of_current_probabilities_vector, final_likelihood_gradient_for_evaluation_of_likelihood_gradient_function
 
 
+def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome):
+    """
+    Return a numpy matrix (balanced Hi-C) from an mcool file.
+
+    :param str mcool_filename: The file to read from
+    :param int experiment_resolution: The experiment resolution (bin size) to read
+    :param str chromosome: The chromosome to look for. Format should be: chrXX
+    :return: A numpy matrix containing the data of the requested chromosome at the requested resolution
+    """
+    coolfile = f'{mcool_filename}::/resolutions/{experiment_resolution}'
+    c = cooler.Cooler(coolfile)
+
+    (start_idx, end_idx) = c.extent(chromosome)
+    experimented_cis_interactions = c.matrix()[start_idx:end_idx,start_idx:end_idx]
+
+    return experimented_cis_interactions
+
+def save_input_data(interactions_mat, output_dir, output_filename_suffix=''):
+    """
+    Save to disk the interactions matrix and the original indices of non-NaN values.
+    This can be used for later correlation evaluation with bio tracks.
+
+    The input matrix filename is 'input_matrix{suffix}.npz'
+    The non-NaN indices filename is 'experimented_cis_interactions_is_not_nan_vec{suffix}.npy'
+
+    :param numpy-array interactions_mat: Interactions (Hi-C) matrix
+    :param str chromosome: chromosome used for this experiment (chrXX)
+    :param int resolution: matrix resolution (bin size)
+    :param str output_dir: directory where output files will be saved
+    """
+    non_nan_indices = ~np.isnan(interactions_mat).all(1)
+    non_nan_output_filename = f'experimented_cis_interactions_is_not_nan_vec{output_filename_suffix}.npy'
+    np.save(os.path.join(output_dir, non_nan_output_filename), non_nan_indices)
+
+    input_matrix_filename = f'input_matrix{output_filename_suffix}'
+    np.savez_compressed(os.path.join(output_dir, input_matrix_filename), a=interactions_mat)
+
+def save_output_data(probabilities_vector, distance_decay_power, output_dir, output_filename_suffix):
+    filename_dd_power_value = f'model_distance_decay_power_value{output_filename_suffix}.npy'
+    filename_probabilities = f'lambda_probabilities{output_filename_suffix}.npy'
+    np.save(os.path.join(output_data_dir, filename_dd_power_value), distance_decay_power)  
+    np.save(os.path.join(output_data_dir, filename_probabilities), probabilities_vector)
+
+def matrix_to_value_vector(input_interactions_mat):
+    """
+    Convert the input interactions matrix into a 1D vector of the observed values.
+    The vector is taken from the lower triangle of the interactions matrix after various arrangements, cleaning and normalizations.
+
+    :param array input_interactions_mat: Interactions matrix
+    :return: A tuple of the vector of interaction values and the new number of bins (after empty ones were removed)
+    :rtype: tuple
+    """
+    # fill the diagonal with nan values
+    clean_mat = input_interactions_mat.copy()
+    np.fill_diagonal(clean_mat, np.nan) 
+
+    # delete empty rows and columns
+    non_nan_indices = ~np.isnan(input_interactions_mat).all(1)
+    clean_mat = clean_mat[:, non_nan_indices][non_nan_indices, :]
+
+    # make sure we have a symmetric cis interactions matrix
+    clean_mat = np.maximum(clean_mat, clean_mat.transpose())
+
+    number_of_bins = np.size(clean_mat, 0)
+
+    lower_triangle_indices = np.tril_indices(number_of_bins, -1)
+    # normalizing the cis interaction matrix to sum of 1 for easier gradient evaluation
+    clean_mat /= np.nansum(clean_mat[lower_triangle_indices]) 
+
+    # keep only the lower triangular interaction matrix
+    value_vec = clean_mat[lower_triangle_indices]
+
+    return value_vec, number_of_bins
+
+def process_matrix(input_interactions_mat):
+    non_nan_indices = ~np.isnan(input_interactions_mat).all(1)
+
+    original_number_of_bins = np.size(input_interactions_mat, 0) 
+    values_vec, new_number_of_bins = matrix_to_value_vector(input_interactions_mat)
+
+    # set initial random vector for the algorithm
+    x0_random = np.append((np.random.rand(new_number_of_bins) / 2) + 0.25, [-1])  
+
+    # set bound for the probability vector and distance decay power
+    bnd = np.append([(0.01, 0.99)] * new_number_of_bins, [(-2, -0.5)], axis=0)  
+
+    # calculate the maximal likelihood probabilities vector and distance decay power using the "L-BFGS-B" method
+    optimize_options = dict(disp=True, ftol=1.0e-10, gtol=1e-010, eps=1e-10, maxfun=100000, maxiter=100000, maxls=100)
+    res = sp.optimize.minimize(fun=evaluation_of_likelihood_gradient, x0=x0_random, args=(values_vec, non_nan_indices),
+            method='L-BFGS-B', jac=True, bounds=bnd, options=optimize_options)
+
+    # resulted probabilities vector and distance decay power of the model
+    model_probabilities_vector = np.zeros(original_number_of_bins) + np.nan
+    model_probabilities_vector[non_nan_indices] = res.x[0:new_number_of_bins] 
+    
+    model_distance_decay_power_value = res.x[new_number_of_bins]
+
+    return model_probabilities_vector, model_distance_decay_power_value
 
 def main():
 
@@ -81,72 +181,19 @@ def main():
     args = parser.parse_args()
     
     local = str(args.local)
-    chrom = 'chr' + args.chrom 
+    chrom = f'chr{args.chrom}'
     directory = args.directory
     mcool_filename = args.mcool
     experiment_resolution = args.resolution
+    output_data_dir = os.path.join(local, directory, 'OutputData')
+    output_filename_suffix = f'_{chrom}_{experiment_resolution}kb'
 
-    coolfile = str(mcool_filename) + '::/resolutions/' + str(experiment_resolution)
-    c = cooler.Cooler(coolfile)
+    input_interactions_mat = get_matrix_from_coolfile(mcool_filename, experiment_resolution, chrom)
+    save_input_data(input_interactions_mat, output_data_dir, output_filename_suffix)
+    model_probabilities_vector, model_distance_decay_power_value = process_matrix(input_interactions_mat)
+    save_output_data(model_probabilities_vector, model_distance_decay_power_value, output_data_dir, output_filename_suffix)
 
-#    chroms = c.chromnames[:-1]
-
-
-    ex = c.extent(chrom) # returns a tuple with first and last bins of specified region
-    d = c.matrix()[ex[0]:ex[1],ex[0]:ex[1]] # returns a numpy matrix (balanced Hi-C)
-    
-    experimented_cis_interactions = d
-    #xperimented_cis_interactions[experimented_cis_interactions == 0] = np.nan
-
-    # keep the indices of nan values for later correlation evaluations with bio tracks
-    experimented_cis_interactions_is_not_nan_vec = ~np.isnan(experimented_cis_interactions).all(1)
-    np.save(local + str(directory) + '/OutputData/experimented_cis_interactions_is_not_nan_vec_' + str(chrom) + '_'+str(experiment_resolution) + 'kb' + '.npy', experimented_cis_interactions_is_not_nan_vec)
-
-    np.savez_compressed(local + str(directory) + '/OutputData/input_matrix_' + str(chrom) + '_' + str(experiment_resolution) + 'kb', a=experimented_cis_interactions)
-
-    # fill the diagonal with nan values
-    np.fill_diagonal(experimented_cis_interactions, np.nan) 
-
-    original_number_of_bins = np.size(experimented_cis_interactions, 0) 
-
-    # delete empty rows and columns
-    experimented_cis_interactions = experimented_cis_interactions[:, experimented_cis_interactions_is_not_nan_vec]  
-    experimented_cis_interactions = experimented_cis_interactions[experimented_cis_interactions_is_not_nan_vec, :]
-
-    # make sure we have a symmetric cis interactions matrix
-    experimented_cis_interactions = np.maximum(experimented_cis_interactions, experimented_cis_interactions.transpose())  # generate cis interaction matrix
-
-    # replace zeros with nan values
-    #experimented_cis_interactions[experimented_cis_interactions == 0] = np.nan   
-
-    # updated chromosome length after deleting empty rows and columns
-    new_number_of_bins = np.size(experimented_cis_interactions, 0)  
-    
-    # normalizing the cis interaction matrix to sum of 1 for easier gradient evaluation
-    experimented_cis_interactions = experimented_cis_interactions / (np.nansum(experimented_cis_interactions[np.tril_indices(new_number_of_bins, -1)]) * 1.0) 
-
-    # keep only the lower triangular interaction matrix
-    experimented_cis_interactions = experimented_cis_interactions[np.tril_indices(new_number_of_bins,-1)]
-
-    # set initial random vector for the algorithm
-    x0_random = np.append((np.random.rand(new_number_of_bins) / 2) + 0.25, [-1])  
-
-    # set bound for the probability vector and distance decay power
-    bnd = np.append([(0.01, 0.99)] * new_number_of_bins, [(-2, -0.5)], axis=0)  
-
-    # calculate the maximal likelihood probabilities vector and distance decay power using the "L-BFGS-B" method
-    res = sp.optimize.minimize(fun=evaluation_of_likelihood_gradient, x0=x0_random, args=(experimented_cis_interactions,experimented_cis_interactions_is_not_nan_vec),method='L-BFGS-B',jac=True, bounds=bnd,
-                               #options={'disp': True})  # calculate maximum likelihood variables vector
-                               options={'disp': True,'ftol': 1.0e-10, 'gtol': 1e-010, 'eps': 1e-10, 'maxfun': 100000, 'maxiter': 100000, 'maxls': 100})  # calculate maximum likelihood variables vecto
-
-
-    # resulted probabilities vector and distance decay power of the model
-    model_probabilities_vector = np.zeros(original_number_of_bins) + np.nan
-    model_probabilities_vector[experimented_cis_interactions_is_not_nan_vec] = res.x[0:new_number_of_bins] 
-    
-    model_distance_decay_power_vavlue = res.x[new_number_of_bins]
-
-    np.save(local + str(directory) + '/OutputData/model_distance_decay_power_value_' + str(chrom) + '_' + str(experiment_resolution) + 'kb.npy', model_distance_decay_power_vavlue)  
-    np.save(local + str(directory) + '/OutputData/lambda_probabilities_' + str(chrom) + '_' + str(experiment_resolution) + 'kb.npy', model_probabilities_vector)
+    print(f'Data saved into directory {output_data_dir} with suffix {output_filename_suffix}.')
  
-main()
+if __name__ == '__main__':
+    main()
