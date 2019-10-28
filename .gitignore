@@ -1,0 +1,9 @@
+# vim
+.*.swp
+
+# python
+*.pyc
+
+# data files
+*.mcool
+*.npy
