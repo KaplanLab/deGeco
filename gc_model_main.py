@@ -1,28 +1,11 @@
 import argparse
-import cooler
 import os
 import sys
 import time
 import numpy as np
 
 from gc_model import fit
-
-def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome):
-    """
-    Return a numpy matrix (balanced Hi-C) from an mcool file.
-
-    :param str mcool_filename: The file to read from
-    :param int experiment_resolution: The experiment resolution (bin size) to read
-    :param str chromosome: The chromosome to look for. Format should be: chrXX
-    :return: A numpy matrix containing the data of the requested chromosome at the requested resolution
-    """
-    coolfile = f'{mcool_filename}::/resolutions/{experiment_resolution}'
-    c = cooler.Cooler(coolfile)
-
-    (start_idx, end_idx) = c.extent(chromosome)
-    experimented_cis_interactions = c.matrix()[start_idx:end_idx,start_idx:end_idx]
-
-    return experimented_cis_interactions
+from hic_analysis import get_matrix_from_coolfile
 
 def detect_file_type(filename):
     if filename.endswith('.mcool'):

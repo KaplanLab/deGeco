@@ -5,6 +5,8 @@ import functools
 import scipy as sp
 from scipy import optimize
 
+from hic_analysis import preprocess, remove_unusable_bins
+
 def calculate_likelihood(interactions, non_nan_indices, number_of_states, probabilities_params_count, weights_param_count,
         number_of_bins, variables):
     """
@@ -32,40 +34,12 @@ def calculate_likelihood(interactions, non_nan_indices, number_of_states, probab
 
     return -log_likelihood
 
-def clean_matrix(interactions_mat):
-    """
-    Perform various arrangements, cleaning and normalizations on the input interactions matrix. Removes empty bins,
-    ensures matrix is symmetric, etc.
-
-    :param array interactions_mat: Interactions matrix
-    :return: Clean Interactions matrix
-    :rtype: array
-    """
-    # fill the diagonal with nan values
-    clean_mat = interactions_mat.copy()
-    np.fill_diagonal(clean_mat, np.nan) 
-
-    # delete empty rows and columns
-    non_nan_mask = ~np.isnan(interactions_mat).all(1)
-    clean_mat = clean_mat[:, non_nan_mask][non_nan_mask, :]
-
-    # make sure we have a symmetric cis interactions matrix
-    clean_mat = np.maximum(clean_mat, clean_mat.transpose())
-
-    number_of_bins = np.size(clean_mat, 0)
-
-    lower_triangle_indices = np.tril_indices(number_of_bins, -1)
-    # normalizing the cis interaction matrix to sum of 1 for easier gradient evaluation
-    clean_mat /= np.nansum(clean_mat[lower_triangle_indices]) 
-
-    return clean_mat
-
 def get_unique_interactions(interaction_mat):
     """
     Return the lower triangle of the given matrix as a vector, resulting in a vector of only unique
     interactions (as the upper triangle is symmetric to the lower)
 
-    :param array interaction_mat: the interaction matrix, preferably after running clean_matrix()
+    :param array interaction_mat: the interaction matrix, preferably after preprocessing
     :return: A vector of the lower triangle's values
     :rtype: 1d array
     """
@@ -146,7 +120,7 @@ def fit(interactions_mat, number_of_states=2):
     :rtype: tuple
     """
     original_number_of_bins = np.size(interactions_mat, 0) 
-    clean_interactions_mat = clean_matrix(interactions_mat)
+    clean_interactions_mat = remove_unusable_bins(preprocess(interactions_mat))
     new_number_of_bins = np.size(clean_interactions_mat, 0)
     unique_interactions = get_unique_interactions(clean_interactions_mat)
     non_nan_mask = ~np.isnan(interactions_mat).all(1)
