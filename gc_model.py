@@ -54,7 +54,7 @@ def init_variables(probabilities_params_count, weights_param_count):
     Give an intial value to all the variables we optimize.
     """
     prob_init = (np.random.rand(probabilities_params_count) / 2) + 0.25
-    weights_init = np.ones(weights_param_count) / weights_param_count
+    weights_init = normalize(np.random.rand(weights_param_count))
     dd_init = (-1,)
     x0 = np.concatenate((prob_init, weights_init, dd_init))
 
