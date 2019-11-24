@@ -76,10 +76,10 @@ def normalize_distance(interactions):
     normalized = np.full_like(interactions, np.nan)
     for diag_num in range(1, number_of_bins):
         diag = interactions.diagonal(diag_num)
-        diag_sum = np.nansum(diag)
-        if diag_sum == 0:
+        diag_mean = np.nanmean(diag)
+        if diag_mean == 0:
             continue
-        normalized_diag = diag / diag_sum
+        normalized_diag = diag / diag_mean
         np.fill_diagonal(normalized[:, diag_num:], normalized_diag) # upper diag
         np.fill_diagonal(normalized[diag_num:], normalized_diag) # lower diag
 
