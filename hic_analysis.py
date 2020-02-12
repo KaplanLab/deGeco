@@ -78,8 +78,9 @@ def normalize_distance(interactions):
         diag = interactions.diagonal(diag_num)
         diag_mean = np.nanmean(diag)
         if diag_mean == 0:
-            continue
-        normalized_diag = diag / diag_mean
+            normalized_diag = 0
+        else:
+            normalized_diag = diag / diag_mean
         np.fill_diagonal(normalized[:, diag_num:], normalized_diag) # upper diag
         np.fill_diagonal(normalized[diag_num:], normalized_diag) # lower diag
 
