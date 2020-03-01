@@ -90,8 +90,9 @@ def normalize_distance(interactions):
     return normalized
 
 def zeros_to_nan(data):
-    no_zeros = data.copy()
-    no_zeros[data == 0] = np.nan
+    no_zeros = np.full_like(data, np.nan)
+    mask = data != 0
+    no_zeros[mask] = data[mask]
 
     return no_zeros
 
