@@ -119,7 +119,7 @@ def weight_hyperparams(shape, number_of_states):
         function = lambda n, v: np.eye(n)
         param_count = 1 # should be 0, but later code doesn't handle that well
     elif shape == 'eye_with_empty':
-        function = lambda n, v: np.concatenate([np.diag([0]), np.ones(n-1)])
+        function = lambda n, v:  np.diag(np.concatenate([[0], np.ones(n-1)]))
         param_count = 1 # should be 0, but later code doesn't handle that well
     else:
         raise ValueError("Invalid weight shape")
