@@ -64,7 +64,7 @@ def init_bounds(probabilities_params_count, weights_param_count):
     Set bound for the probability, state weights and distance decay power variables
     """
     prob_bounds = [(0.01, 0.99)] * probabilities_params_count 
-    weights_bounds = [(0.01, 0.99)] * weights_param_count
+    weights_bounds = [(0, 1)] * weights_param_count
     dd_bounds = [(-2, -0.5)]
     bounds = np.concatenate((prob_bounds, weights_bounds, dd_bounds), axis=0)  
 
