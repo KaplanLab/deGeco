@@ -5,7 +5,7 @@ import time
 import numpy as np
 
 from gc_model import fit
-from hic_analysis import get_matrix_from_coolfile
+from hic_analysis import get_matrix_from_coolfile, balance
 
 def detect_file_type(filename):
     if filename.endswith('.mcool'):
@@ -28,6 +28,7 @@ def main():
     parser.add_argument('-kb', help='resolution (required for type=mcool)', dest='resolution', type=int, required=False)
     parser.add_argument('-n', help='number of states', dest='nstates', type=int, required=False, default=2)
     parser.add_argument('-s', help='shape of weights matrix', dest='shape', type=str, required=False, default='symmetric')
+    parser.add_argument('-b', help='balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
     args = parser.parse_args()
     
     filename = args.filename
@@ -47,7 +48,10 @@ def main():
     else:
         interactions_mat = np.load(filename)
 
-    print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}.')
+    if args.balance:
+        interactions_mat = balance(interactions_mat)
+
+    print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}. Balance = {args.balance}.')
     start_time = time.time()
     probabilities_vector, state_weights, distance_decay_power_value = fit(interactions_mat, number_of_states=nstates,
             weights_shape=shape)

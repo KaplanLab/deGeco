@@ -63,6 +63,15 @@ def preprocess(interactions):
 
     return l1_normalized
 
+def balance(matrix, epsilon=1e-3):
+    """
+    Ensure all rows and columns of the given matrix have the same mean, up to epsilon
+    """
+    column_mean = lambda m: np.mean(m, axis=0)
+    while np.any(np.abs(column_mean(matrix) - 1.0) > epsilon):
+      matrix = matrix / column_mean(matrix)
+      matrix = matrix.T # transpose and do the same for rows
+
 def normalize_distance(interactions):
     """
     Normalize interactions matrix to remove the distance effects from interactions.
