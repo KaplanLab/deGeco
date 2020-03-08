@@ -1,4 +1,6 @@
 import numpy as np
+import warnings
+
 from matplotlib import pyplot as plt
 import cooler
 
@@ -67,10 +69,14 @@ def balance(matrix, epsilon=1e-3):
     """
     Ensure all rows and columns of the given matrix have the same mean, up to epsilon
     """
-    column_mean = lambda m: np.mean(m, axis=0)
-    while np.any(np.abs(column_mean(matrix) - 1.0) > epsilon):
-      matrix = matrix / column_mean(matrix)
-      matrix = matrix.T # transpose and do the same for rows
+    column_mean = lambda m: np.nanmean(m, axis=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        while np.any(np.abs(column_mean(matrix) - 1.0) > epsilon):
+          matrix = matrix / column_mean(matrix)
+          matrix = matrix.T # transpose and do the same for rows
+
+    return matrix
 
 def normalize_distance(interactions):
     """
