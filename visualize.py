@@ -10,24 +10,26 @@ from matplotlib import pyplot as plt, gridspec
 import hic_analysis as hic
 import gc_model
 
-def all_figures(input_data, l, alpha, weights, histones_dir):
-    figure1 = hic_figure(input_data, l, alpha, weights)
-    figure2 = histones_figure(histones_dir, x_axis=figure1.axes[0])
-    figure3 = probabilities_histogram_figure(l)
+def all_figures(input_data, fit1, fit2, histones_dir):
+    figure1 = hic_figure(input_data, *fit1)
+    figure2 = hic_figure(input_data, *fit2, figure1.axes[0])
+    figure3 = histones_figure(histones_dir, x_axis=figure1.axes[0])
+    #figure4 = probabilities_histogram_figure(l)
     plt.show()
 
-def hic_figure(input_data, l, alpha, weights):
+def hic_figure(input_data, l, weights, alpha, x_axis=None):
     fig = plt.figure()
-    gs = gridspec.GridSpec(3, 3, figure=fig)
+    gs = gridspec.GridSpec(nrows=4, ncols=4, figure=fig)
 
-    ax1 = fig.add_subplot(gs[:2, :2])
+    ax1 = fig.add_subplot(gs[:3, :3], sharex=x_axis, sharey=x_axis)
+    ax1.set_aspect('equal', 'box')
     plot_data(ax1, input_data, l, alpha, weights)
 
-    ax2 = fig.add_subplot(gs[2, :], sharex=ax1)
+    ax2 = fig.add_subplot(gs[3, :3], sharex=x_axis or ax1)
     plot_probabilities(fig, ax2, l)
 
-    ax3 = fig.add_subplot(gs[0, 2])
-    plot_weights(ax3, weights)
+    #ax3 = fig.add_subplot(gs[0, 2])
+    #plot_weights(ax3, weights)
 
     return fig
 
@@ -109,8 +111,9 @@ def plot_data(ax, input_data, l, alpha, weights):
     log_normalized = lambda x: hic.safe_log(hic.normalize_distance(x))
 
     data_and_model = hic.merge_by_diagonal(log_normalized(data), log_normalized(data_reconstruction))
-    ax.set_title('data (bottom) and model reconstruction (top)\nafter distance normalization')
-    ax_img = ax.imshow(data_and_model)
+    states = weights.shape[0]
+    ax.set_title(f'states={states}')
+    ax_img = ax.imshow(data_and_model, aspect='equal')
     plt.colorbar(ax_img)
 
 def get_histone_modification_title(filename):
