@@ -150,7 +150,7 @@ def fit(interactions_mat, number_of_states=2, weights_shape='symmetric'):
 
     x0 = init_variables(probabilities_params_count, weights_param_count)
     bounds = init_bounds(probabilities_params_count, weights_param_count)
-    optimize_options = dict(disp=True, ftol=1.0e-10, gtol=1e-010, eps=1e-10, maxfun=100000, maxiter=100000, maxls=100)
+    optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
     likelihood_with_model = functools.partial(calculate_likelihood, unique_interactions, non_nan_indices,
             number_of_states, probabilities_params_count, weights_param_count, new_number_of_bins, weights_function)
