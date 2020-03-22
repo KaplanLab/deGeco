@@ -31,13 +31,13 @@ def hic_figure(input_data, l, alpha, weights):
 
     return fig
 
-def histones_figure(histones_dir, x_axis=None):
+def histones_figure(histones_dir, x_axis=None, ylim_min_pct=0, ylim_max_pct=99):
     fig = plt.figure()
     histones = glob.glob(f'{histones_dir}/*')
     histones_count = len(histones)
     for i, histone_filename in enumerate(histones):
         ax = fig.add_subplot(histones_count, 1, i+1, sharex=x_axis)
-        plot_histone(fig, ax, histone_filename)
+        plot_histone(fig, ax, histone_filename, ylim_max_pct=ylim_max_pct, ylim_min_pct=ylim_min_pct)
 
 def probabilities_histogram_figure(l):
     n_states = l.shape[1]
@@ -77,11 +77,14 @@ def set_hidable_lines(figure, ax, legend, lines):
 
     figure.canvas.mpl_connect('pick_event', onpick)
 
-def plot_histone(fig, ax, histone_filename):
-    histone_mod = np.load(histone_filename)
+def plot_histone(fig, ax, histone_filename, ylim_min_pct=0, ylim_max_pct=99):
     histone_mod_title = get_histone_modification_title(histone_filename)
+    histone_mod = np.load(histone_filename)
+    ylim_min = np.percentile(histone_mod, ylim_min_pct)
+    ylim_max = np.percentile(histone_mod, ylim_max_pct)
     ax.set_title(f'Histone mod: {histone_mod_title}')
     ax_lines = ax.plot(histone_mod)
+    ax.set_ylim(bottom=ylim_min, top=ylim_max)
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
     ax_legend = ax.legend(['min_with_zeros', 'min', 'max'], bbox_to_anchor=(1, 1), loc='upper left')
