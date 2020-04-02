@@ -48,13 +48,27 @@ def get_unique_interactions(interaction_mat):
 
     return value_vec
 
-def init_variables(probabilities_params_count, weights_param_count):
+def init_variables(probabilities_params_count, weights_param_count, lambdas=None, weights=None, alpha=None):
     """
     Give an intial value to all the variables we optimize.
     """
-    prob_init = (np.random.rand(probabilities_params_count) / 2) + 0.25
-    weights_init = normalize(np.random.rand(weights_param_count))
-    dd_init = (-1,)
+    if lambdas is None:
+        prob_init = (np.random.rand(probabilities_params_count) / 2) + 0.25
+    else:
+        assert lambdas.size == probabilities_params_count
+        prob_init = np.copy(lambdas)
+
+    if weights is None:
+        weights_init = normalize(np.random.rand(weights_param_count))
+    else:
+        assert weights.size == weights_param_count
+        weights_init = np.copy(weights)
+
+    if alpha is None:
+        dd_init = (-1,)
+    else:
+        dd_init = (alpha,)
+
     x0 = np.concatenate((prob_init, weights_init, dd_init))
 
     return x0
@@ -126,7 +140,7 @@ def weight_hyperparams(shape, number_of_states):
 
     return function, param_count
 
-def fit(interactions_mat, number_of_states=2, weights_shape='symmetric'):
+def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', init_values=None):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
 
@@ -148,7 +162,7 @@ def fit(interactions_mat, number_of_states=2, weights_shape='symmetric'):
     weights_function, weights_param_count = weight_hyperparams(weights_shape, number_of_states)
     distance_decay_param_count = 1
 
-    x0 = init_variables(probabilities_params_count, weights_param_count)
+    x0 = init_variables(probabilities_params_count, weights_param_count, **init_values)
     bounds = init_bounds(probabilities_params_count, weights_param_count)
     optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
