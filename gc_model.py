@@ -8,7 +8,7 @@ from scipy import optimize
 from hic_analysis import preprocess, remove_unusable_bins, zeros_to_nan
 
 def calculate_likelihood(interactions, non_nan_indices, number_of_states, probabilities_params_count, weights_param_count,
-        number_of_bins, weights_function, variables):
+        number_of_bins, weights_function, lambdas_function, variables):
     """
     Caulculate the log-likelihood of a given interaction (in interactions) using a model with a given number of states and
     with the current values for all model parameters (state probabilities, distance decay power value, etc)
@@ -21,7 +21,7 @@ def calculate_likelihood(interactions, non_nan_indices, number_of_states, probab
     distance_mat = np.absolute(non_nan_indices[None].T - non_nan_indices) + np.diag(np.full(number_of_bins, np.nan))
     distance_vec = distance_mat[lower_triangle_indices]
 
-    state_probabilities_mat = normalize(prob_vars.reshape(number_of_bins, number_of_states), normalize_axis=1)
+    state_probabilities_mat = normalize(lambdas_function(prob_vars).reshape(number_of_bins, number_of_states), normalize_axis=1)
     state_weights_mat = normalize(weights_function(number_of_states, weights_vars))
     state_interactions_model = state_probabilities_mat @ state_weights_mat @ state_probabilities_mat.T
     state_interactions_vec = state_interactions_model[lower_triangle_indices]
@@ -119,6 +119,13 @@ def triangle_to_symmetric(N, tri_values):
     symmat = np.array([get_values(i) for i in range(N)])
     return symmat
 
+def lambdas_hyper_default(non_nan_mask, number_of_states):
+    non_nan_indices = non_nan_mask.sum()
+    param_count = non_nan_indices * number_of_states
+    func = lambda p: p
+
+    return func, param_count
+
 def weight_hyperparams(shape, number_of_states):
     if shape == 'symmetric':
         function = triangle_to_symmetric
@@ -137,7 +144,7 @@ def weight_hyperparams(shape, number_of_states):
 
     return function, param_count
 
-def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', init_values=None):
+def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', lambdas_hyper=None, init_values={}):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
 
@@ -155,7 +162,8 @@ def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', init_va
     non_nan_mask = ~np.isnan(interactions_mat).all(1)
     non_nan_indices = np.where(non_nan_mask)[0]
 
-    probabilities_params_count = new_number_of_bins * number_of_states
+    _lambdas_hyper = lambdas_hyper if lambdas_hyper is not None else lambdas_hyper_default
+    lambdas_function, probabilities_params_count = _lambdas_hyper(non_nan_mask, number_of_states)
     weights_function, weights_param_count = weight_hyperparams(weights_shape, number_of_states)
     distance_decay_param_count = 1
 
@@ -164,13 +172,14 @@ def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', init_va
     optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
     likelihood_with_model = functools.partial(calculate_likelihood, unique_interactions, non_nan_indices,
-            number_of_states, probabilities_params_count, weights_param_count, new_number_of_bins, weights_function)
+            number_of_states, probabilities_params_count, weights_param_count, new_number_of_bins,
+            weights_function, lambdas_function)
     likelihood_grad = grad(likelihood_with_model)
     res = sp.optimize.minimize(fun=likelihood_with_model, x0=x0, method='L-BFGS-B', jac=likelihood_grad, bounds=bounds,
             options=optimize_options)
 
     prob_vars, weights_vars, model_dd_power = extract_variables(probabilities_params_count, weights_param_count, res.x)
-    model_probabilities = normalize(prob_vars.reshape(new_number_of_bins, number_of_states), normalize_axis=1)
+    model_probabilities = normalize(lambdas_function(prob_vars).reshape(new_number_of_bins, number_of_states), normalize_axis=1)
     model_state_weights = normalize(weights_function(number_of_states, weights_vars))
     expanded_model_probabilities = np.full((original_number_of_bins, number_of_states), np.nan)
     expanded_model_probabilities[non_nan_indices, :] = model_probabilities
