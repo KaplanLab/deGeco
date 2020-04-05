@@ -33,20 +33,17 @@ def calculate_likelihood(interactions, non_nan_indices, number_of_states, probab
 
     return -log_likelihood
 
-def get_unique_interactions(interaction_mat):
+def get_lower_triangle(mat):
     """
-    Return the lower triangle of the given matrix as a vector, resulting in a vector of only unique
-    interactions (as the upper triangle is symmetric to the lower)
+    Return the lower triangle of the given matrix as a vector.
 
-    :param array interaction_mat: the interaction matrix, preferably after preprocessing
+    :param array mat: matrix
     :return: A vector of the lower triangle's values
     :rtype: 1d array
     """
-    number_of_bins = np.size(interaction_mat, 0)
-    lower_triangle_indices = np.tril_indices(number_of_bins, -1)
-    value_vec = interaction_mat[lower_triangle_indices]
+    lower_triangle_indices = np.tril_indices_from(mat, k=-1)
 
-    return value_vec
+    return mat[lower_triangle_indices]
 
 def init_variables(probabilities_params_count, weights_param_count, lambdas=None, weights=None, alpha=None):
     """
@@ -108,18 +105,18 @@ def normalize(array, normalize_axis=None):
 
     return array/normalization_factor
 
-def triangle_to_symmetric(matrix_size, tri_values):
+def triangle_to_symmetric(N, tri_values):
     """
-    Convert the lower triangle values given by tri_values to a symmetric matrix with the given size
+    Convert the lower triangle values given by tri_values to a symmetric NxN matrix
     """
     # This implementation is a bit more complicated than expected, because autograd doesn't support
     # array assignments (so symmat[x,y] = symmat[y,x] = values won't work). Instead we build the matrix one
     # column at a time
-    x, y = np.tril_indices(matrix_size)
+    x, y = np.tril_indices(N)
     def get_values(index):
         return tri_values[(x == index) | (y == index)]
 
-    symmat = np.array([get_values(i) for i in range(matrix_size)])
+    symmat = np.array([get_values(i) for i in range(N)])
     return symmat
 
 def weight_hyperparams(shape, number_of_states):
@@ -154,7 +151,7 @@ def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', init_va
     original_number_of_bins = np.size(interactions_mat, 0) 
     clean_interactions_mat = remove_unusable_bins(preprocess(interactions_mat))
     new_number_of_bins = np.size(clean_interactions_mat, 0)
-    unique_interactions = get_unique_interactions(clean_interactions_mat)
+    unique_interactions = get_lower_triangle(clean_interactions_mat)
     non_nan_mask = ~np.isnan(interactions_mat).all(1)
     non_nan_indices = np.where(non_nan_mask)[0]
 
