@@ -5,7 +5,8 @@ import time
 import numpy as np
 
 from gc_model import fit
-from hic_analysis import get_matrix_from_coolfile, balance
+from hic_analysis import get_matrix_from_coolfile
+from array_utils import balance
 
 def detect_file_type(filename):
     if filename.endswith('.mcool'):
@@ -63,7 +64,8 @@ def main():
     end_time = time.time()
     print(f'Took {end_time - start_time} seconds')
 
-    np.savez_compressed(output_file, lambdas=probabilities_vector, weights=state_weights, alpha=distance_decay_power_value)
+    np.savez_compressed(output_file, lambdas=probabilities_vector, weights=state_weights, alpha=distance_decay_power_value, 
+            seed=args.seed)
     print(f'Data saved into {output_file} in npz format.')
  
 if __name__ == '__main__':

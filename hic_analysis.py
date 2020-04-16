@@ -4,6 +4,8 @@ import warnings
 from matplotlib import pyplot as plt
 import cooler
 
+from array_utils import ensure_symmetric, normalize_tri_l1, remove_main_diag
+
 def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome):
     """
     Return a numpy matrix (balanced Hi-C) from an mcool file.
@@ -20,27 +22,6 @@ def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome):
     experimented_cis_interactions = c.matrix()[start_idx:end_idx,start_idx:end_idx]
 
     return experimented_cis_interactions
-
-def normalize_tri_l1(interactions):
-    """
-    Divides the input matrix by the L1 norm of the lower triangle
-    """
-    return interactions / np.nansum(np.tril(interactions, -1))
-
-def ensure_symmetric(interactions):
-    """
-    Make A[i, j] = A[j, i] = max(A[i, j], A[j, i])
-    """
-    return np.maximum(interactions, interactions.T)
-    
-def remove_main_diag(interactions):
-    """
-    Put NaNs in the main diagonal so it's removed from all calculations.
-    """
-    nan_in_diag = interactions.copy()
-    np.fill_diagonal(nan_in_diag, np.nan)
-
-    return nan_in_diag
 
 def remove_unusable_bins(interactions):
     """
@@ -64,19 +45,6 @@ def preprocess(interactions):
     l1_normalized = normalize_tri_l1(no_main_diag)
 
     return l1_normalized
-
-def balance(matrix, epsilon=1e-3):
-    """
-    Ensure all rows and columns of the given matrix have the same mean, up to epsilon
-    """
-    column_mean = lambda m: np.nanmean(m, axis=0)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        while np.any(np.abs(column_mean(matrix) - 1.0) > epsilon):
-          matrix = matrix / column_mean(matrix)
-          matrix = matrix.T # transpose and do the same for rows
-
-    return matrix
 
 def normalize_distance(interactions):
     """

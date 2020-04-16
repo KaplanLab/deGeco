@@ -12,7 +12,7 @@ from toolz.curried import do, compose
 from hic_analysis import preprocess, remove_unusable_bins 
 from array_utils import get_lower_triangle, triangle_to_symmetric, nannormalize, remove_main_diag
 from model_utils import expand_by_mask, log_likelihood
-from distance_decay_model import log_distance_decay
+import distance_decay_model
 
 @memoize
 def get_start_mat(N):
@@ -34,7 +34,7 @@ def log_insulation_probability(log_ck):
     return get_lower_triangle(np.flipud(flipped_probability_mat).T)
 
 def log_interaction_probability(log_ck, alpha, n, non_nan_mask):
-    dd = log_distance_decay(n, non_nan_mask, alpha)
+    dd = distance_decay_model.log_distance_decay(n, non_nan_mask, alpha)
     ip = log_insulation_probability(log_ck)
     
     return dd + ip
@@ -45,18 +45,15 @@ def extract_params(variables, n, non_nan_mask):
 
     return log_ck, alpha, n, non_nan_mask
 
-def init_variables(number_of_bins):
-    ck_init = np.log(np.random.rand(number_of_bins))
-    alpha_init = (-1,)
+def init_variables(ck_param_count):
+    ck_init = np.log(np.random.rand(ck_param_count))
 
-    return np.concatenate((ck_init, alpha_init))
+    return ck_init
 
-def init_bounds(number_of_bins):
-    ck_bounds = [(None, 0)] * number_of_bins
-    alpha_bounds = [(-2, -0.5)]
-    bounds = np.concatenate((ck_bounds, alpha_bounds), axis=0)  
+def init_bounds(ck_param_count):
+    ck_bounds = [(None, 0)] * ck_param_count
 
-    return bounds
+    return ck_bounds
 
 def fit(interactions_mat):
     """
@@ -68,8 +65,14 @@ def fit(interactions_mat):
 
     ck_param_count = new_number_of_bins - 2
     assert ck_param_count > 0
-    x0 = init_variables(ck_param_count)
-    bounds = init_bounds(ck_param_count)
+    x0 = np.concatenate([
+        init_variables(ck_param_count),
+        distance_decay_model.init_variables()
+    ])
+    bounds = np.concatenate([
+        init_bounds(ck_param_count),
+        distance_decay_model.init_bounds()
+    ])
     optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
     def likelihood_minimizer(variables):
