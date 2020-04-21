@@ -47,11 +47,21 @@ def triangle_to_symmetric(N, tri_values, k=0):
     # This implementation is a bit more complicated than expected, because autograd doesn't support
     # array assignments (so symmat[x,y] = symmat[y,x] = values won't work). Instead we build the matrix one
     # column at a time
+    if k > 0:
+        raise ValueError("Only lower triangle is supported")
     x, y = np.tril_indices(N, k=k)
+    nans_insert = np.full(abs(k), np.nan)
+
     def get_values(index):
         return tri_values[(x == index) | (y == index)]
 
-    symmat = np.array([get_values(i) for i in range(N)])
+    def pad_values(i, v):
+        # insert nans in the diags up to k
+        if k == 0:
+            return v
+        return np.insert(v, i, nans_insert)
+
+    symmat = np.array([pad_values(i, get_values(i)) for i in range(N)])
     return symmat
 
 def ensure_symmetric(a):
