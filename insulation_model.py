@@ -6,8 +6,8 @@ import scipy as sp
 from scipy import optimize
 import functools
 import itertools
-from toolz import memoize
-from toolz.curried import do, compose
+from toolz import memoize, curry
+from toolz.curried import do, compose, thread_first
 
 from hic_analysis import preprocess, remove_unusable_bins 
 from array_utils import get_lower_triangle, triangle_to_symmetric, nannormalize, remove_main_diag
@@ -55,13 +55,25 @@ def init_bounds(ck_param_count):
 
     return ck_bounds
 
-def fit(interactions_mat):
+@curry
+def remove_diags_from(start_diag, a):
+    if start_diag is None:
+        return a
+    _a = a.copy()
+    max_diag = a.shape[0]
+    for d in range(start_diag, max_diag):
+        np.fill_diagonal(_a[:, d:], np.nan)
+        np.fill_diagonal(_a[d:], np.nan)
+    return _a
+
+def fit(interactions_mat, valid_distance=None):
     """
     """
     number_of_bins = interactions_mat.shape[0]
     non_nan_mask = ~np.isnan(interactions_mat).all(1)
     new_number_of_bins = non_nan_mask.sum()
-    unique_interactions = get_lower_triangle(remove_unusable_bins(preprocess(interactions_mat)))
+    unique_interactions = thread_first(interactions_mat, preprocess, remove_diags_from(valid_distance), remove_unusable_bins,
+                                       get_lower_triangle)
 
     ck_param_count = new_number_of_bins - 2
     assert ck_param_count > 0
@@ -79,6 +91,11 @@ def fit(interactions_mat):
         model_params = extract_params(variables, number_of_bins, non_nan_mask)
         model_interactions = log_interaction_probability(*model_params)
         return -log_likelihood(unique_interactions, model_interactions)
+    def tap(p):
+        def _tap(x):
+            print(f"{p}: {x}")
+            return x
+        return _tap
     likelihood_grad = grad(likelihood_minimizer)
     res = sp.optimize.minimize(fun=likelihood_minimizer, x0=x0, method='L-BFGS-B', jac=likelihood_grad, bounds=bounds,
             options=optimize_options)
