@@ -9,8 +9,8 @@ def get_lower_triangle(mat, k=-1):
     :return: A vector of the lower triangle's values
     :rtype: 1d array
     """
-    N = mat.shape[0]
-    lower_triangle_indices = np.tril_indices(N, k=k)
+    shape = mat.shape
+    lower_triangle_indices = np.tril_indices(n=shape[0], m=shape[1], k=k)
 
     return mat[lower_triangle_indices]
 
