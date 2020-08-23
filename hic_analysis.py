@@ -23,6 +23,20 @@ def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome):
 
     return experimented_cis_interactions
 
+def get_selector_from_coolfile(mcool_filename, resolution):
+    """
+    Return a Cooler selector from an mcool file. A selector can be sliced to get the wanted parts of the matrix,
+    without loading it all into memory first.
+
+    :param str mcool_filename: The file to read from
+    :param int experiment_resolution: The experiment resolution (bin size) to read
+    :return: A cooler.api.RangeSelector2D object
+    """
+    coolfile = f'{mcool_filename}::/resolutions/{resolution}'
+    c = cooler.Cooler(coolfile)
+
+    return c.matrix()
+
 def remove_unusable_bins(interactions):
     """
     Remove all bins that have NaN in all of their values
