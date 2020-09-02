@@ -13,13 +13,14 @@ import distance_decay_model
 def compartments_interactions(state_probabilities, state_weights):
     return get_lower_triangle(state_probabilities @ state_weights @ state_probabilities.T)
 
-def log_interaction_probability(state_probabilities, state_weights, distance_decay_power, number_of_bins, non_nan_mask):
+def log_interaction_probability(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths,
+        non_nan_mask):
     compartments = np.log(compartments_interactions(state_probabilities, state_weights))
-    distance_decay = distance_decay_model.log_distance_decay(number_of_bins, non_nan_mask, distance_decay_power)
+    distance_decay = distance_decay_model.log_distance_decay(cis_lengths, non_nan_mask, cis_dd_power, trans_dd)
     return compartments + distance_decay
 
 def extract_params(variables, probabilities_params_count, weights_param_count, number_of_states, weights_function,
-        lambdas_function, number_of_bins, non_nan_mask):
+        lambdas_function, cis_lengths, non_nan_mask):
     """
     Slice and transform the given 1-D variable vector into the model parameters
     """
@@ -28,12 +29,12 @@ def extract_params(variables, probabilities_params_count, weights_param_count, n
 
     prob_vars = variables[:probabilities_params_count]
     weights_vars = variables[weights_start_idx:weights_end_idx]
-    alpha = variables[-1]
+    alpha, beta = variables[-2:]
 
     lambdas = normalize(lambdas_function(prob_vars).reshape(-1, number_of_states), normalize_axis=1)
     weights = normalize(weights_function(number_of_states, weights_vars))
 
-    return lambdas, weights, alpha, number_of_bins, non_nan_mask
+    return lambdas, weights, alpha, beta, cis_lengths, non_nan_mask
 
 def init_variables(probabilities_params_count, weights_param_count, lambdas=None, weights=None, alpha=None):
     """
@@ -90,18 +91,20 @@ def weight_hyperparams(shape, number_of_states):
 
     return function, param_count
 
-def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', lambdas_hyper=None, init_values={}):
+def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='symmetric', lambdas_hyper=None, init_values={}):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
 
     :param array interaction_mat: the Hi-C interaction matrix as a numpy array
+    :param array cis_lengths:   Optional list of lengths of cis-interacting blocks (chromosomes). If not passed,
+                                all bins are considered cis-interacting.
     :param int number_of_states: the number of possible states (compartments) for each bin
     :param str weights_shape: how the weights matrix should look. can be: 'symmetric', 'diag', 'eye', 'eye_with_empty'
     :return: A tuple of each bin's state probability (shape BINSxSTATES), state-state interaction
              probabiity (shape STATES-STATES) and the distance-decay power value (scalar)
     :rtype: tuple
     """
-    number_of_bins = interactions_mat.shape[0]
+    _cis_lengths = cis_lengths if cis_lengths is not None else [interactions_mat.shape[0]]
     non_nan_mask = ~np.isnan(interactions_mat).all(1)
     unique_interactions = get_lower_triangle(remove_unusable_bins(preprocess(interactions_mat)))
 
@@ -121,7 +124,7 @@ def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', lambdas
 
     def likelihood_minimizer(variables):
         model_params = extract_params(variables, probabilities_params_count, weights_param_count, number_of_states,
-                weights_function, lambdas_function, number_of_bins, non_nan_mask)
+                weights_function, lambdas_function, _cis_lengths, non_nan_mask)
         model_interactions = log_interaction_probability(*model_params)
         return -log_likelihood(unique_interactions, model_interactions)
 
@@ -129,27 +132,31 @@ def fit(interactions_mat, number_of_states=2, weights_shape='symmetric', lambdas
     res = sp.optimize.minimize(fun=likelihood_minimizer, x0=x0, method='L-BFGS-B', jac=likelihood_grad, bounds=bounds,
             options=optimize_options)
 
-    model_probabilities, model_weights, model_dd_power, *_ = extract_params(res.x, probabilities_params_count,
-            weights_param_count, number_of_states, weights_function, lambdas_function, number_of_bins, non_nan_mask)
+    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(res.x, probabilities_params_count,
+            weights_param_count, number_of_states, weights_function, lambdas_function, _cis_lengths, non_nan_mask)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
     
-    return expanded_model_probabilities, model_weights, model_dd_power
+    return expanded_model_probabilities, model_weights, cis_dd_power, trans_dd
 
-def generate_interactions_matrix(state_probabilities, state_weights, distance_decay_power):
+def generate_interactions_matrix(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths=None):
     """
     Generate an NxN interactions matrix by using the given model parameters. Diagonal values will be
     NaN as they're aren't modeled, along with any bins that have NaN in their state probabilities.
 
     :param array state_probabilities: NxM matrix, N being the bin count and M the number of states
     :param array state_weights: MxM symmetric matrix for state-state interaction probability
-    :param number distance_decay_power: The rate by which interaction rate decreases with distance
+    :param number cis_dd_power: The rate by which cis interaction rate decreases with distance
+    :param number trans_dd:     The constant that determines the relative strength of trans interactions
+    :param array cis_lengths:   Optional list of lengths of cis-interacting blocks (chromosomes). If not passed,
+                                all bins are considered cis-interacting.
     :return: interaction matrix generated by the model
     :rtype: NxN array
     """
-    number_of_bins = state_probabilities.shape[0]
+    _cis_lengths = cis_lengths if cis_lengths is not None else [state_probabilities.shape[0]]
+    number_of_bins = np.sum(_cis_lengths)
     non_nan_mask = np.ones(number_of_bins, dtype=bool)
-    log_interactions = log_interaction_probability(state_probabilities, state_weights, distance_decay_power,
-            number_of_bins, non_nan_mask)
+    log_interactions = log_interaction_probability(state_probabilities, state_weights, cis_dd_power, trans_dd,
+            _cis_lengths, non_nan_mask)
     interactions_vec = nannormalize(np.exp(log_interactions))
     interactions_mat = remove_main_diag(triangle_to_symmetric(number_of_bins, interactions_vec, k=-1))
 
