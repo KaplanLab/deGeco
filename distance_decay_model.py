@@ -59,10 +59,11 @@ def fit(interactions_mat):
         ])
     optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
+    log_likelihood = model_utils.log_likelihood_by(unique_interactions)
     def likelihood_minimizer(variables):
         model_params = extract_params(variables, number_of_bins, non_nan_mask)
         model_interactions = log_distance_decay(*model_params)
-        l = -model_utils.log_likelihood(unique_interactions, model_interactions)
+        l = -log_likelihood(model_interactions)
         return l
 
     likelihood_grad = grad(likelihood_minimizer)

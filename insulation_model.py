@@ -11,7 +11,7 @@ from toolz.curried import do, compose, thread_first
 
 from hic_analysis import preprocess, remove_unusable_bins 
 from array_utils import get_lower_triangle, triangle_to_symmetric, nannormalize, remove_main_diag
-from model_utils import expand_by_mask, log_likelihood
+from model_utils import expand_by_mask, log_likelihood_by
 import distance_decay_model
 
 @memoize
@@ -87,10 +87,11 @@ def fit(interactions_mat, valid_distance=None):
     ])
     optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
+    log_likelihood = model_utils.log_likelihood_by(unique_interactions)
     def likelihood_minimizer(variables):
         model_params = extract_params(variables, number_of_bins, non_nan_mask)
         model_interactions = log_interaction_probability(*model_params)
-        return -log_likelihood(unique_interactions, model_interactions)
+        return -log_likelihood(model_interactions)
     def tap(p):
         def _tap(x):
             print(f"{p}: {x}")

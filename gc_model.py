@@ -6,7 +6,7 @@ from scipy import optimize
 
 from hic_analysis import preprocess, remove_unusable_bins, zeros_to_nan
 from array_utils import get_lower_triangle, normalize, nannormalize, triangle_to_symmetric, remove_main_diag
-from model_utils import log_likelihood, expand_by_mask
+from model_utils import log_likelihood_by, expand_by_mask
 import distance_decay_model
 
 def compartments_interactions(state_probabilities, state_weights):
@@ -121,11 +121,12 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
     ])
     optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
+    log_likelihood = log_likelihood_by(unique_interactions)
     def likelihood_minimizer(variables):
         model_params = extract_params(variables, probabilities_params_count, weights_param_count, number_of_states,
                 weights_function, lambdas_function, _cis_lengths, non_nan_mask)
         model_interactions = log_interaction_probability(*model_params)
-        return -log_likelihood(unique_interactions, model_interactions)
+        return -log_likelihood(model_interactions)
 
     res = sp.optimize.minimize(fun=value_and_grad(likelihood_minimizer), x0=x0, method='L-BFGS-B', jac=True, bounds=bounds,
             options=optimize_options)
