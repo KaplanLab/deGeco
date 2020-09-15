@@ -1,7 +1,6 @@
 from __future__ import division
 import autograd.numpy as np
-from autograd import grad
-import functools
+from autograd import value_and_grad
 import scipy as sp
 from scipy import optimize
 
@@ -128,8 +127,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
         model_interactions = log_interaction_probability(*model_params)
         return -log_likelihood(unique_interactions, model_interactions)
 
-    likelihood_grad = grad(likelihood_minimizer)
-    res = sp.optimize.minimize(fun=likelihood_minimizer, x0=x0, method='L-BFGS-B', jac=likelihood_grad, bounds=bounds,
+    res = sp.optimize.minimize(fun=value_and_grad(likelihood_minimizer), x0=x0, method='L-BFGS-B', jac=True, bounds=bounds,
             options=optimize_options)
 
     model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(res.x, probabilities_params_count,
