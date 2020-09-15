@@ -1,6 +1,11 @@
 import warnings
+from autograd.extend import primitive, defvjp
 import autograd.numpy as np
+from toolz import memoize
 
+memoize_tri = memoize(np.tri)
+
+@primitive
 def get_lower_triangle(mat, k=-1):
     """
     Return a vector of values of the lower triangle of the given matrix, starting from the k-th diagonal.
@@ -10,9 +15,20 @@ def get_lower_triangle(mat, k=-1):
     :rtype: 1d array
     """
     shape = mat.shape
-    lower_triangle_indices = np.tril_indices(n=shape[0], m=shape[1], k=k)
+    tri_mask = memoize_tri(N=shape[0], M=shape[1], k=k, dtype=bool)
 
-    return mat[lower_triangle_indices]
+    return mat[tri_mask]
+
+def get_lower_triangle_vjp(ans, mat, k=-1):
+    def _vjp(g):
+        n, m = mat.shape
+        tri_mask = memoize_tri(N=n, k=k, M=m, dtype=bool)
+        r = np.zeros(mat.shape)
+        r[tri_mask] = g
+        return r
+    return _vjp
+
+defvjp(get_lower_triangle, get_lower_triangle_vjp)
 
 def normalize(array, normalize_axis=None):
     """
