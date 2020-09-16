@@ -104,8 +104,9 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
     :rtype: tuple
     """
     _cis_lengths = cis_lengths if cis_lengths is not None else [interactions_mat.shape[0]]
-    non_nan_mask = ~np.isnan(interactions_mat).all(1)
     unique_interactions = get_lower_triangle(remove_unusable_bins(preprocess(interactions_mat)))
+    non_nan_mask = ~np.isnan(interactions_mat).all(1)
+    del interaction_mat
 
     _lambdas_hyper = lambdas_hyper if lambdas_hyper is not None else lambdas_hyper_default
     lambdas_function, probabilities_params_count = _lambdas_hyper(non_nan_mask, number_of_states)
@@ -122,6 +123,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
     optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
     log_likelihood = log_likelihood_by(unique_interactions)
+    del unique_interactions
     def likelihood_minimizer(variables):
         model_params = extract_params(variables, probabilities_params_count, weights_param_count, number_of_states,
                 weights_function, lambdas_function, _cis_lengths, non_nan_mask)

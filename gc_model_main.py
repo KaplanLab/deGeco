@@ -46,12 +46,12 @@ def main():
     if file_type == 'mcool':
         chrom = f'chr{args.chrom}'
         experiment_resolution = args.resolution
-        interactions_mat = get_matrix_from_coolfile(filename, experiment_resolution, chrom)
+        interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, chrom)
     else:
-        interactions_mat = np.load(filename)
+        interactions_mat = lambda: np.load(filename)
 
     if args.balance:
-        interactions_mat = balance(interactions_mat)
+        interactions_mat = lambda: balance(interactions_mat())
 
     if args.seed is not None:
         print(f'Setting random seed to {args.seed}')
@@ -59,7 +59,7 @@ def main():
 
     print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}. Balance = {args.balance}.')
     start_time = time.time()
-    probabilities_vector, state_weights, distance_decay_power_value = fit(interactions_mat, number_of_states=nstates,
+    probabilities_vector, state_weights, distance_decay_power_value = fit(interactions_mat(), number_of_states=nstates,
             weights_shape=shape)
     end_time = time.time()
     print(f'Took {end_time - start_time} seconds')
