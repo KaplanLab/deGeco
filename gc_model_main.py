@@ -5,7 +5,7 @@ import time
 import numpy as np
 
 from gc_model import fit
-from hic_analysis import get_matrix_from_coolfile
+from hic_analysis import get_matrix_from_coolfile, get_chr_lengths
 from array_utils import balance
 
 def detect_file_type(filename):
@@ -25,7 +25,8 @@ def main():
     parser.add_argument('-m', help='file name', dest='filename', type=str, required=True)
     parser.add_argument('-t', help='file type', dest='type', type=str, choices=['mcool, numpy, auto'], default='auto')
     parser.add_argument('-o', help='output file name', dest='output', type=str, required=False, default='gc_out.npz')
-    parser.add_argument('-ch', help='chromosome (required for type=mcool)', dest='chrom', type=str, required=False)
+    parser.add_argument('-ch', help='chromosome (required for type=mcool). format: chrX[,chrY]', dest='chrom',
+            type=str, required=False)
     parser.add_argument('-kb', help='resolution (required for type=mcool)', dest='resolution', type=int, required=False)
     parser.add_argument('-n', help='number of states', dest='nstates', type=int, required=False, default=2)
     parser.add_argument('-s', help='shape of weights matrix', dest='shape', type=str, required=False, default='symmetric')
@@ -44,10 +45,13 @@ def main():
     nstates = args.nstates
     shape = args.shape
     if file_type == 'mcool':
-        chrom = f'chr{args.chrom}'
+        format_chr = lambda c : f'chr{c}' if not str(c).startswith('chr') else str(c)
+        chroms = [ format_chr(x) for x in args.chrom.split(',') ]
         experiment_resolution = args.resolution
-        interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, chrom)
+        cis_lengths = get_chr_lengths(filename, experiment_resolution, chroms)
+        interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, *chroms)
     else:
+        cis_lengths = None
         interactions_mat = lambda: np.load(filename)
 
     if args.balance:
@@ -60,12 +64,12 @@ def main():
 
     print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}. Balance = {args.balance}.')
     start_time = time.time()
-    probabilities_vector, state_weights, distance_decay_power_value = fit(interactions_mat(), number_of_states=nstates,
-            weights_shape=shape)
+    probabilities_vector, state_weights, cis_dd_power, trans_dd = fit(interactions_mat(), number_of_states=nstates,
+            weights_shape=shape, cis_lengths=cis_lengths)
     end_time = time.time()
     print(f'Took {end_time - start_time} seconds')
 
-    np.savez_compressed(output_file, lambdas=probabilities_vector, weights=state_weights, alpha=distance_decay_power_value, 
+    np.savez_compressed(output_file, lambdas=probabilities_vector, weights=state_weights, alpha=cis_dd_power, beta=trans_dd, 
             seed=args.seed)
     print(f'Data saved into {output_file} in npz format.')
  

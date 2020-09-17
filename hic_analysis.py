@@ -6,22 +6,59 @@ import cooler
 
 from array_utils import ensure_symmetric, normalize_tri_l1, remove_main_diag
 
-def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome):
+def get_chr_lengths(mcool_filename, experiment_resolution, chromosomes):
+    """
+    Return a tuple of chromosome lengths, in bins of the given resolution, based on the given mcool file.
+
+    :param str mcool_filename: The file to read from
+    :param int experiment_resolution: The experiment resolution (bin size) to read
+    :param iterable chromosomes: The chromosomes to return. Format should be 'chrX'
+
+    :return: tuple of ints: Lengths of requested chromosomes, in bins
+    """
+    coolfile = f'{mcool_filename}::/resolutions/{experiment_resolution}'
+    c = cooler.Cooler(coolfile)
+
+    ranges = ( c.extent(chrom) for chrom in chromosomes )
+    lengths = ( end - start for start, end in ranges )
+    
+    return tuple(lengths)
+
+def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome1, chromosome2=None):
     """
     Return a numpy matrix (balanced Hi-C) from an mcool file.
 
     :param str mcool_filename: The file to read from
     :param int experiment_resolution: The experiment resolution (bin size) to read
-    :param str chromosome: The chromosome to look for. Format should be: chrXX
-    :return: A numpy matrix containing the data of the requested chromosome at the requested resolution
+    :param str chromosome1: The chromosome to look for. Format should be: chrXX
+    :param str chromosome2: Second chromosome to look for. If specified, both chrs will be concatenated,
+                            including trans regions.
+    :return: array: a numpy matrix containing the data of the requested chromosomes at the requested resolution.
     """
     coolfile = f'{mcool_filename}::/resolutions/{experiment_resolution}'
     c = cooler.Cooler(coolfile)
 
-    (start_idx, end_idx) = c.extent(chromosome)
-    experimented_cis_interactions = c.matrix()[start_idx:end_idx,start_idx:end_idx]
+    if chromosome2 is None:
+        (start_idx, end_idx) = c.extent(chromosome1)
+        experimented_cis_interactions = c.matrix()[start_idx:end_idx,start_idx:end_idx]
 
-    return experimented_cis_interactions
+        return experimented_cis_interactions
+
+    (start_cis1, end_cis1) = c.extent(chromosome1)
+    (start_cis2, end_cis2) = c.extent(chromosome2)
+
+    mat = c.matrix()
+    cis_interactions1 = mat[start_cis1:end_cis1,start_cis1:end_cis1]
+    cis_interactions2 = mat[start_cis2:end_cis2,start_cis2:end_cis2]
+    trans_interactions1 = mat[start_cis1:end_cis1, start_cis2:end_cis2]
+    trans_interactions2 = mat[start_cis2:end_cis2, start_cis1:end_cis1]
+
+    alll_interactions = np.vstack([
+        np.hstack((cis_interactions1, trans_interactions1)),
+        np.hstack((trans_interactions2, cis_interactions2))
+        ])
+
+    return alll_interactions
 
 def get_selector_from_coolfile(mcool_filename, resolution):
     """
