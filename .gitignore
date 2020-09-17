@@ -3,6 +3,7 @@
 
 # python
 *.pyc
+*.ipynb
 
 # data files
 *.mcool
