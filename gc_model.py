@@ -28,6 +28,9 @@ def extract_params(variables, probabilities_params_count, weights_param_count, n
 
     prob_vars = variables[:probabilities_params_count]
     weights_vars = variables[weights_start_idx:weights_end_idx]
+    if not weights_vars.any():
+        # make all-zero weights behave simply as all-equal weights
+        weights_vars = np.ones(weights_end_idx - weights_start_idx)
     alpha, beta = variables[-2:]
 
     lambdas = normalize(lambdas_function(prob_vars).reshape(-1, number_of_states), normalize_axis=1)
@@ -106,7 +109,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
     _cis_lengths = cis_lengths if cis_lengths is not None else [interactions_mat.shape[0]]
     unique_interactions = get_lower_triangle(remove_unusable_bins(preprocess(interactions_mat)))
     non_nan_mask = ~np.isnan(interactions_mat).all(1)
-    del interaction_mat
+    del interactions_mat
 
     _lambdas_hyper = lambdas_hyper if lambdas_hyper is not None else lambdas_hyper_default
     lambdas_function, probabilities_params_count = _lambdas_hyper(non_nan_mask, number_of_states)

@@ -51,7 +51,8 @@ def main():
         interactions_mat = lambda: np.load(filename)
 
     if args.balance:
-        interactions_mat = lambda: balance(interactions_mat())
+        interactions_mat_unbalanced = interactions_mat
+        interactions_mat = lambda: balance(interactions_mat_unbalanced())
 
     if args.seed is not None:
         print(f'Setting random seed to {args.seed}')
