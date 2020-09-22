@@ -32,11 +32,23 @@ def log_distance_decay(cis_lengths, non_nan_mask, alpha, beta):
 
     return mask * cis_interactions + (1-mask) * trans_interactions
 
-def init_variables():
-    return (-1, -2)
+def init_variables(init_values=None):
+    alpha = -1
+    beta = -2
+    if init_values:
+        alpha = init_values.get('alpha', alpha)
+        beta = init_values.get('beta', beta)
+    return (alpha, beta)
 
-def init_bounds():
-    return [(-2, -0.5), (None, 0)]
+def init_bounds(fixed_values=None):
+    bounds = [(-2, -0.5), (None, 0)]
+    if fixed_values:
+        fixed_alpha = fixed_values.get('alpha')
+        fixed_beta = fixed_values.get('beta')
+        bounds[0] = bounds[0] if fixed_alpha is None else (fixed_alpha, fixed_alpha)
+        bounds[1] = bounds[1] if fixed_beta is None else (fixed_beta, fixed_beta)
+
+    return bounds
 
 def extract_params(variables, n, non_nan_mask):
     alpha, beta = variables[:2]

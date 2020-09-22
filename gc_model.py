@@ -3,6 +3,7 @@ import autograd.numpy as np
 from autograd import value_and_grad
 import scipy as sp
 from scipy import optimize
+import itertools
 
 from hic_analysis import preprocess, remove_unusable_bins, zeros_to_nan
 from array_utils import get_lower_triangle, normalize, nannormalize, triangle_to_symmetric, remove_main_diag
@@ -38,32 +39,50 @@ def extract_params(variables, probabilities_params_count, weights_param_count, n
 
     return lambdas, weights, alpha, beta, cis_lengths, non_nan_mask
 
-def init_variables(probabilities_params_count, weights_param_count, lambdas=None, weights=None, alpha=None):
+def init_variables(probabilities_params_count, weights_param_count, init_values=None):
     """
     Give an intial value to all the variables we optimize.
     """
+    if init_values:
+        lambdas = init_values.get('lambdas')
+        weights = init_values.get('weights')
+    else:
+        lambdas = weights = None
     if lambdas is None:
         prob_init = (np.random.rand(probabilities_params_count) / 2) + 0.25
     else:
+        if np.ndim(lambdas) > 1:
+            lambdas = lambdas[~np.isnan(lambdas).all(axis=1)]
         assert lambdas.size == probabilities_params_count
-        prob_init = np.copy(lambdas)
+        prob_init = np.copy(lambdas.flatten())
 
     if weights is None:
         weights_init = normalize(np.random.rand(weights_param_count))
     else:
+        if np.ndim(weights) > 1:
+            weights = get_lower_triangle(weights, k=0)
         assert weights.size == weights_param_count
-        weights_init = np.copy(weights)
+        weights_init = np.copy(weights.flatten())
 
     x0 = np.concatenate((prob_init, weights_init))
 
     return x0
 
-def init_bounds(probabilities_params_count, weights_param_count):
+def init_bounds(probabilities_params_count, weights_param_count, fixed_values=None):
     """
     Set bound for the probability and state weights
     """
     prob_bounds = [(0.01, 0.99)] * probabilities_params_count 
     weights_bounds = [(0, 1)] * weights_param_count
+    
+    if fixed_values:
+        fixed_lambdas = fixed_values.get('lambdas')
+        if fixed_lambdas is not None:
+            prob_bounds = [ o if f is None else (f, f) for o, f in itertools.zip_longest(prob_bounds, fixed_lambdas.flatten())]
+        fixed_weights = fixed_values.get('weights')
+        if fixed_weights is not None:
+            weights_bounds = [ o if f is None else (f, f) for o, f in itertools.zip_longest(weights_bounds, fixed_weights.flatten())]
+
     bounds = np.concatenate((prob_bounds, weights_bounds), axis=0)  
 
     return bounds
@@ -93,7 +112,8 @@ def weight_hyperparams(shape, number_of_states):
 
     return function, param_count
 
-def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='symmetric', lambdas_hyper=None, init_values={}):
+def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='symmetric', lambdas_hyper=None,
+        init_values={}, fixed_values={}):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
 
@@ -103,7 +123,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
     :param int number_of_states: the number of possible states (compartments) for each bin
     :param str weights_shape: how the weights matrix should look. can be: 'symmetric', 'diag', 'eye', 'eye_with_empty'
     :return: A tuple of each bin's state probability (shape BINSxSTATES), state-state interaction
-             probabiity (shape STATES-STATES) and the distance-decay power value (scalar)
+             probabiity (shape STATES-STATES), the cis distance-decay power value and the trans decay value (scalrs)
     :rtype: tuple
     """
     _cis_lengths = cis_lengths if cis_lengths is not None else [interactions_mat.shape[0]]
@@ -116,12 +136,12 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
     weights_function, weights_param_count = weight_hyperparams(weights_shape, number_of_states)
 
     x0 = np.concatenate([
-        init_variables(probabilities_params_count, weights_param_count, **init_values),
-        distance_decay_model.init_variables()
+        init_variables(probabilities_params_count, weights_param_count, init_values),
+        distance_decay_model.init_variables(init_values)
     ])
     bounds = np.concatenate([
-        init_bounds(probabilities_params_count, weights_param_count),
-        distance_decay_model.init_bounds()
+        init_bounds(probabilities_params_count, weights_param_count, fixed_values),
+        distance_decay_model.init_bounds(fixed_values)
     ])
     optimize_options = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
 
