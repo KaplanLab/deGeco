@@ -182,6 +182,6 @@ def generate_interactions_matrix(state_probabilities, state_weights, cis_dd_powe
     log_interactions = log_interaction_probability(state_probabilities, state_weights, cis_dd_power, trans_dd,
             _cis_lengths, non_nan_mask)
     interactions_vec = nannormalize(np.exp(log_interactions))
-    interactions_mat = remove_main_diag(triangle_to_symmetric(number_of_bins, interactions_vec, k=-1))
+    interactions_mat = remove_main_diag(triangle_to_symmetric(number_of_bins, interactions_vec, k=-1, fast=True))
 
     return interactions_mat

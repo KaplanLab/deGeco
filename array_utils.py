@@ -56,9 +56,11 @@ def normalize_tri_l1(a):
     """
     return a / np.nansum(np.tril(a, -1))
 
-def triangle_to_symmetric(N, tri_values, k=0):
+def triangle_to_symmetric(N, tri_values, k=0, fast=False):
     """
     Convert the lower triangle values (from k-th diagonal) given by tri_values to a symmetric NxN matrix
+
+    if fast=True runs a faster version that's not autograd-safe
     """
     # This implementation is a bit more complicated than expected, because autograd doesn't support
     # array assignments (so symmat[x,y] = symmat[y,x] = values won't work). Instead we build the matrix one
@@ -66,6 +68,12 @@ def triangle_to_symmetric(N, tri_values, k=0):
     if k > 0:
         raise ValueError("Only lower triangle is supported")
     x, y = np.tril_indices(N, k=k)
+
+    if fast:
+        symmat = np.zeros((N, N))
+        symmat[x, y] = symmat[y, x] = tri_values
+        return symmat
+
     nans_insert = np.full(abs(k), np.nan)
 
     def get_values(index):
