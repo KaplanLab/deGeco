@@ -28,9 +28,9 @@ def log_distance_decay(cis_lengths, non_nan_mask, alpha, beta):
     n = np.sum(cis_lengths)
     mask = cis_trans_mask(cis_lengths, non_nan_mask)
     cis_interactions = log_distance_vector(n, non_nan_mask) * alpha
-    trans_interactions = beta
+    trans_interactions = np.full(cis_interactions.shape, beta)
 
-    return mask * cis_interactions + (1-mask) * trans_interactions
+    return np.where(mask, cis_interactions, trans_interactions)
 
 def init_variables(init_values=None):
     alpha = -1
