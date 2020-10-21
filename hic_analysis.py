@@ -29,13 +29,16 @@ def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome1,
     Return a numpy matrix (balanced Hi-C) from an mcool file.
 
     :param str mcool_filename: The file to read from
-    :param int experiment_resolution: The experiment resolution (bin size) to read
+    :param int experiment_resolution: The experiment resolution (bin size) to read. If None, assume cool file with one res.
     :param str chromosome1: The chromosome to look for. Format should be: chrXX
     :param str chromosome2: Second chromosome to look for. If specified, both chrs will be concatenated,
                             including trans regions.
     :return: array: a numpy matrix containing the data of the requested chromosomes at the requested resolution.
     """
-    coolfile = f'{mcool_filename}::/resolutions/{experiment_resolution}'
+    if experiment_resolution is not None:
+        coolfile = f'{mcool_filename}::/resolutions/{experiment_resolution}'
+    else:
+        coolfile = f'{mcool_filename}'
     c = cooler.Cooler(coolfile)
 
     if chromosome2 is None:
