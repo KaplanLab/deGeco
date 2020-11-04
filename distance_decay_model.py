@@ -8,8 +8,14 @@ import hic_analysis
 import model_utils
 
 def distance_matrix(n):
-    indices = np.arange(n)
-    return 1.0 * np.abs(indices[:, None] - indices[None, :])
+    if np.ndim(n) == 0:
+        bin_distances = np.arange(n)
+    elif np.ndim(n) == 1:
+        bin_distances = np.append([0], np.cumsum(n))
+    else:
+        raise ValueError("n must be a scalar or 1D vector")
+
+    return 1.0 * np.abs(bin_distances[:, None] - bin_distances[None, :])
 
 @memoize(key= lambda args, kwargs: (tuple(args[0]), tuple(args[1])))
 def cis_trans_mask(cis_lengths, non_nan_mask):
