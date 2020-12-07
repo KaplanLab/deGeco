@@ -87,8 +87,8 @@ def remove_unusable_bins(interactions):
 
 def preprocess(interactions):
     """
-    Perform various arrangements on the input matrix to make it easier to analyze. Removes the main diagonal, 
-    ensures matrix is symmetric and normalizes the L1 norm.
+    Perform various arrangements on the input matrix to make it easier to analyze. Removes the main diagonal
+    and ensures matrix is symmetric.
 
     :param array interactions_mat: Interactions matrix
     :return: Interactions matrix after processing
@@ -96,9 +96,8 @@ def preprocess(interactions):
     """
     symmetric = ensure_symmetric(interactions)
     no_main_diag = remove_main_diag(symmetric)
-    l1_normalized = normalize_tri_l1(no_main_diag)
 
-    return l1_normalized
+    return no_main_diag
 
 def normalize_distance(interactions):
     """
