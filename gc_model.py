@@ -112,6 +112,18 @@ def weight_hyperparams(shape, number_of_states):
 
     return function, param_count
 
+def sort_weights(weights):
+    self_weights = np.diag(weights)
+    M = self_weights.size
+    weights_order = np.argsort(self_weights)
+    sorted_weights = np.empty_like(weights)
+    for i in range(M):
+        w_i = weights_order[i]
+        for j in range(M):
+            w_j = weights_order[j]
+            sorted_weights[i, j] = weights[w_i, w_j]
+    return sorted_weights, weights_order
+
 def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='symmetric', lambdas_hyper=None,
         init_values={}, fixed_values={}):
     """
@@ -159,8 +171,11 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
     model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(res.x, probabilities_params_count,
             weights_param_count, number_of_states, weights_function, lambdas_function, _cis_lengths, non_nan_mask)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
+
+    sorted_weights, weights_order = sort_weights(model_weights)
+    sorted_probabilities = expanded_model_probabilities[:, weights_order]
     
-    return expanded_model_probabilities, model_weights, cis_dd_power, trans_dd
+    return sorted_probabilities, sorted_weights, cis_dd_power, trans_dd
 
 def generate_interactions_matrix(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths=None):
     """
