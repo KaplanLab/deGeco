@@ -3,10 +3,12 @@ import os
 import sys
 import time
 import numpy as np
+import itertools
 
 from gc_model import fit
+import gc_model
 from hic_analysis import get_matrix_from_coolfile, get_chr_lengths
-from array_utils import balance
+from array_utils import balance, get_lower_triangle
 
 def detect_file_type(filename):
     if filename.endswith('.mcool'):
@@ -15,6 +17,23 @@ def detect_file_type(filename):
         return 'numpy'
     else:
         raise ValueError('unknown file type')
+
+def fit_iterate(matrix, init, rounds=5, **kwargs):
+    init_l, init_w, init_a = init['lambdas'], init['weights'], init['alpha']
+    if np.ndim(init_l) > 1:
+        init_l = init_l[~np.isnan(init_l).all(axis=1)]
+    if np.ndim(init_w) > 1:
+        init_w = get_lower_triangle(init_w, k=0)
+    params = dict(lambdas=init_l, weights=init_w, alpha=init_a)
+    for i in range(rounds):
+        for (k1, k2) in itertools.combinations(('lambdas', 'weights', 'alpha'), 2):
+            v1, v2 = params[k1], params[k2]
+            fixed_fit = gc_model.fit(matrix, fixed_values={k1: v1, k2: v2}, init_values=params, **kwargs)
+            params['lambdas'], params['weights'], params['alpha'] = fixed_fit[:3]
+            params['lambdas'] = params['lambdas'][~np.isnan(params['lambdas']).all(axis=1)]
+            params['weights'] = get_lower_triangle(params['weights'], k=0)
+            print(i, params['weights'])
+    return fixed_fit
 
 def main():
     #################################################################################################
@@ -32,6 +51,8 @@ def main():
     parser.add_argument('-s', help='shape of weights matrix', dest='shape', type=str, required=False, default='symmetric')
     parser.add_argument('-b', help='balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
     parser.add_argument('--seed', help='set random seed', dest='seed', type=int, required=False, default=None)
+    parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)
+    parser.add_argument('--rounds', help='rounds of fixed-fit', dest='rounds', type=int, required=False, default=0)
     args = parser.parse_args()
     
     filename = args.filename
@@ -64,8 +85,28 @@ def main():
 
     print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}. Balance = {args.balance}.')
     start_time = time.time()
-    probabilities_vector, state_weights, cis_dd_power, trans_dd = fit(interactions_mat(), number_of_states=nstates,
-            weights_shape=shape, cis_lengths=cis_lengths)
+    if args.rounds == 0:
+        init_fit = {}
+        if args.init:
+            print(f'Using {args.init} to init fit')
+            init_fit = np.load(args.init)
+        probabilities_vector, state_weights, cis_dd_power, trans_dd = fit(interactions_mat(), number_of_states=nstates,
+                weights_shape=shape, cis_lengths=cis_lengths, init_values=init_fit)
+    else:
+        print(f"Fixing fit over {args.rounds} rounds")
+        non_nan_mask = ~np.isnan(interactions_mat()).all(1)
+        _, lambdas_param_count = gc_model.lambdas_hyper_default(non_nan_mask, nstates)
+        _, weights_param_count = gc_model.weight_hyperparams(shape, nstates)
+        v = gc_model.init_variables(lambdas_param_count, weights_param_count)
+        fix_init = dict(lambdas=v[:-weights_param_count], weights=v[-weights_param_count:], alpha=-1)
+        if args.init:
+            print(f'Using {args.init} to init fit')
+            init_file = np.load(args.init)
+            for k in ('lambdas', 'weights', 'alpha'):
+                if k in init_file:
+                    fix_init[k] = init_file[k]
+        probabilities_vector, state_weights, cis_dd_power, trans_dd = fit_iterate(interactions_mat(), fix_init, args.rounds,
+                number_of_states=nstates, weights_shape=shape, cis_lengths=cis_lengths)
     end_time = time.time()
     print(f'Took {end_time - start_time} seconds')
 
