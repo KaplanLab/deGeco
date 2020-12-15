@@ -35,6 +35,22 @@ def fit_iterate(matrix, init, rounds=5, **kwargs):
             print(i, params['weights'])
     return fixed_fit
 
+def parse_keyvalue(s):
+    d = {}
+    if s:
+        args_list = s.split(',')
+        for a in args_list:
+            k, _, raw_v = a.partition('=')
+            try:
+                v = int(raw_v)
+            except ValueError:
+                try:
+                    v = float(raw_v)
+                except ValueError:
+                    v = raw_v
+            d[k] = v
+    return d
+
 def main():
     #################################################################################################
     # Calculating the maximal likelihood probabilities vector and distance decay power of the model #
@@ -53,6 +69,8 @@ def main():
     parser.add_argument('--seed', help='set random seed', dest='seed', type=int, required=False, default=None)
     parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)
     parser.add_argument('--rounds', help='rounds of fixed-fit', dest='rounds', type=int, required=False, default=0)
+    parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
+    parser.add_argument('--kwargs', help='additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
     args = parser.parse_args()
     
     filename = args.filename
@@ -83,15 +101,18 @@ def main():
         print(f'Setting random seed to {args.seed}')
         np.random.seed(args.seed)
 
-    print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}. Balance = {args.balance}.')
-    start_time = time.time()
+    optimize_options = parse_keyvalue(args.optimize)
+    print(f"Optimize overrides: {optimize_options}")
+
+    kwargs = parse_keyvalue(args.kwargs)
+    print(f"Adding kwargs: {kwargs}")
+
     if args.rounds == 0:
         init_fit = {}
         if args.init:
             print(f'Using {args.init} to init fit')
             init_fit = np.load(args.init)
-        probabilities_vector, state_weights, cis_dd_power, trans_dd = fit(interactions_mat(), number_of_states=nstates,
-                weights_shape=shape, cis_lengths=cis_lengths, init_values=init_fit)
+        fit_func = lambda **kwargs: fit(interactions_mat(), init_values=init_fit, **kwargs)
     else:
         print(f"Fixing fit over {args.rounds} rounds")
         non_nan_mask = ~np.isnan(interactions_mat()).all(1)
@@ -105,8 +126,13 @@ def main():
             for k in ('lambdas', 'weights', 'alpha'):
                 if k in init_file:
                     fix_init[k] = init_file[k]
-        probabilities_vector, state_weights, cis_dd_power, trans_dd = fit_iterate(interactions_mat(), fix_init, args.rounds,
-                number_of_states=nstates, weights_shape=shape, cis_lengths=cis_lengths)
+        fit_func = lambda **kwargs: fit_iterate(interactions_mat(), fix_init, args.rounds, **kwargs)
+
+    print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}. Balance = {args.balance}.')
+    start_time = time.time()
+    probabilities_vector, state_weights, cis_dd_power, trans_dd = \
+            fit_func(number_of_states=nstates, weights_shape=shape, cis_lengths=cis_lengths,
+                    optimize_options=optimize_options, **kwargs)
     end_time = time.time()
     print(f'Took {end_time - start_time} seconds')
 
