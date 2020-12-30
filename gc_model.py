@@ -125,7 +125,7 @@ def sort_weights(weights):
     return sorted_weights, weights_order
 
 def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='symmetric', lambdas_hyper=None,
-        init_values={}, fixed_values={}, optimize_options={}):
+        init_values={}, fixed_values={}, optimize_options={}, instances=1):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
 
@@ -147,7 +147,8 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
     lambdas_function, probabilities_params_count = _lambdas_hyper(non_nan_mask, number_of_states)
     weights_function, weights_param_count = weight_hyperparams(weights_shape, number_of_states)
 
-    x0 = np.concatenate([
+    # x0 is a function so we can run it several times and get different values
+    x0 = lambda: np.concatenate([
         init_variables(probabilities_params_count, weights_param_count, init_values),
         distance_decay_model.init_variables(init_values)
     ])
@@ -166,10 +167,11 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
         model_interactions = log_interaction_probability(*model_params)
         return -log_likelihood(model_interactions)
 
-    res = sp.optimize.minimize(fun=value_and_grad(likelihood_minimizer), x0=x0, method='L-BFGS-B', jac=True, bounds=bounds,
-            options=_optimize_options)
+    results = [ sp.optimize.minimize(fun=value_and_grad(likelihood_minimizer), x0=x0(), method='L-BFGS-B', jac=True, 
+        bounds=bounds, options=_optimize_options) for i in range(instances) ]
+    best = min(results, key=lambda x: x.fun)
 
-    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(res.x, probabilities_params_count,
+    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(best.x, probabilities_params_count,
             weights_param_count, number_of_states, weights_function, lambdas_function, _cis_lengths, non_nan_mask)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
 
