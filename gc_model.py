@@ -155,7 +155,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
         init_bounds(probabilities_params_count, weights_param_count, fixed_values),
         distance_decay_model.init_bounds(fixed_values)
     ])
-    optimize_options_defaults = dict(disp=True, ftol=1.0e-20, gtol=1e-020, eps=1e-20, maxfun=10000000, maxiter=10000000, maxls=100)
+    optimize_options_defaults = dict(disp=True, ftol=1.0e-9, gtol=1e-9, eps=1e-9, maxfun=10000000, maxiter=10000000, maxls=100)
     _optimize_options = { **optimize_options_defaults, **optimize_options }
 
     log_likelihood = log_likelihood_by(unique_interactions)
