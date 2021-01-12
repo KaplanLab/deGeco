@@ -11,6 +11,7 @@ def get_lower_triangle(mat, k=-1):
     Return a vector of values of the lower triangle of the given matrix, starting from the k-th diagonal.
 
     :param array mat: matrix
+    :param int k: Diagonal number (in mat) to start from. Defaults to k=-1
     :return: A vector of the lower triangle's values
     :rtype: 1d array
     """
