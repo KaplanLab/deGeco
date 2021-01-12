@@ -137,8 +137,13 @@ def zeros_to_nan(data):
 def safe_div(a, b):
     return zeros_to_nan(a) / zeros_to_nan(b)
 
-def safe_log(a):
-    return np.log(zeros_to_nan(a))
+def safe_log(a, epsilon=None):
+    """
+    log(a + epsilon), so that zeros aren't converted to NaNs. If not given, epsilon = (smallest non-zero value of a)/10
+    """
+    if epsilon is None:
+        epsilon = np.nanmin(a[a!=0]) / 10
+    return np.log(a + epsilon)
 
 def remove_nan(data):
     nan_idx = np.isnan(data)
