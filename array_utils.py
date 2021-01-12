@@ -104,16 +104,19 @@ def remove_main_diag(a):
 
     return nan_in_diag
 
-def balance(matrix, epsilon=1e-3):
+def balance(matrix, epsilon=1e-5):
     """
     Ensure all rows and columns of the given matrix have the same mean, up to epsilon
     """
-    column_mean = lambda m: np.nanmean(m, axis=0)
+    matrix = np.nan_to_num(matrix)
+    column_mean = lambda m: np.mean(m, axis=0)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        while np.any(np.abs(column_mean(matrix) - 1.0) > epsilon):
-          matrix = matrix / column_mean(matrix)
+        colmean = column_mean(matrix)
+        while np.any(np.abs(colmean - 1.0) > epsilon):
+          matrix = matrix / colmean
           matrix = matrix.T # transpose and do the same for rows
+          colmean = column_mean(matrix)
 
     return matrix
 
