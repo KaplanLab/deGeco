@@ -64,7 +64,7 @@ def main():
             type=str, required=False)
     parser.add_argument('-kb', help='resolution (required for type=mcool)', dest='resolution', type=int, required=False)
     parser.add_argument('-n', help='number of states', dest='nstates', type=int, required=False, default=2)
-    parser.add_argument('-s', help='shape of weights matrix', dest='shape', type=str, required=False, default='symmetric')
+    parser.add_argument('-s', help='shape of weights matrix', dest='shape', type=str, required=False, default='diag')
     parser.add_argument('-b', help='balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
     parser.add_argument('--seed', help='set random seed', dest='seed', type=int, required=False, default=None)
     parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)

@@ -39,11 +39,11 @@ def extract_params(variables, probabilities_params_count, weights_param_count, n
 
     return lambdas, weights, alpha, beta, cis_lengths, non_nan_mask
 
-def init_variables(probabilities_params_count, weights_param_count, init_values=None):
+def init_variables(probabilities_params_count, weights_init, init_values_override=None):
     """
     Give an intial value to all the variables we optimize.
     """
-    if init_values:
+    if init_values_override:
         lambdas = init_values.get('lambdas')
         weights = init_values.get('weights')
     else:
@@ -56,9 +56,7 @@ def init_variables(probabilities_params_count, weights_param_count, init_values=
         assert lambdas.size == probabilities_params_count
         prob_init = np.copy(lambdas.flatten())
 
-    if weights is None:
-        weights_init = normalize(np.random.rand(weights_param_count))
-    else:
+    if weights is not None:
         if np.ndim(weights) > 1:
             weights = get_lower_triangle(weights, k=0)
         assert weights.size == weights_param_count
@@ -96,21 +94,25 @@ def lambdas_hyper_default(non_nan_mask, number_of_states):
 
 def weight_hyperparams(shape, number_of_states):
     if shape == 'symmetric':
-        function = triangle_to_symmetric
+        param_function = triangle_to_symmetric
         param_count = np.tril_indices(number_of_states)[0].size
+        init_values = normalize(get_lower_triangle(np.eye(number_of_states), k=0))
     elif shape == 'diag':
-        function = lambda n, v: np.diag(v)
+        param_function = lambda n, v: np.diag(v)
         param_count = number_of_states
+        init_values = normalize(np.ones(number_of_states))
     elif shape == 'binary' or shape == 'eye':
-        function = lambda n, v: np.eye(n)
+        param_function = lambda n, v: np.eye(n)
         param_count = 1 # should be 0, but later code doesn't handle that well
+        init_values = np.array([0])
     elif shape == 'eye_with_empty':
-        function = lambda n, v:  np.diag(np.concatenate([[0], np.ones(n-1)]))
+        param_function = lambda n, v:  np.diag(np.concatenate([[0], np.ones(n-1)]))
         param_count = 1 # should be 0, but later code doesn't handle that well
+        init_values = np.array([0])
     else:
         raise ValueError("Invalid weight shape")
 
-    return function, param_count
+    return param_function, param_count, init_values
 
 def sort_weights(weights):
     self_weights = np.diag(weights)
@@ -124,7 +126,7 @@ def sort_weights(weights):
             sorted_weights[i, j] = weights[w_i, w_j]
     return sorted_weights, weights_order
 
-def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='symmetric', lambdas_hyper=None,
+def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='diag', lambdas_hyper=None,
         init_values={}, fixed_values={}, optimize_options={}, instances=1):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
@@ -145,11 +147,11 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='s
 
     _lambdas_hyper = lambdas_hyper if lambdas_hyper is not None else lambdas_hyper_default
     lambdas_function, probabilities_params_count = _lambdas_hyper(non_nan_mask, number_of_states)
-    weights_function, weights_param_count = weight_hyperparams(weights_shape, number_of_states)
+    weights_function, weights_param_count, weight_init = weight_hyperparams(weights_shape, number_of_states)
 
     # x0 is a function so we can run it several times and get different values
     x0 = lambda: np.concatenate([
-        init_variables(probabilities_params_count, weights_param_count, init_values),
+        init_variables(probabilities_params_count, weight_init, init_values),
         distance_decay_model.init_variables(init_values)
     ])
     bounds = np.concatenate([
