@@ -19,6 +19,8 @@ def get_chr_lengths(mcool_filename, experiment_resolution, chromosomes):
     coolfile = f'{mcool_filename}::/resolutions/{experiment_resolution}'
     c = cooler.Cooler(coolfile)
 
+    if chromosomes == ['all'] or chromosomes == 'all':
+       chromosomes = c.chromnames
     ranges = ( c.extent(chrom) for chrom in chromosomes )
     lengths = ( end - start for start, end in ranges )
     
@@ -41,6 +43,9 @@ def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome1,
     else:
         coolfile = f'{mcool_filename}'
     c = cooler.Cooler(coolfile)
+
+    if chromosome1 == 'all':
+        return c.matrix()[:, :]
 
     if chromosome2 is None:
         (start_idx, end_idx) = c.extent(chromosome1)
