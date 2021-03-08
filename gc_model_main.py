@@ -49,8 +49,9 @@ def main():
     parser.add_argument('-n', help='number of states', dest='nstates', type=int, required=False, default=2)
     parser.add_argument('-s', help='shape of weights matrix', dest='shape', type=str, required=False, default='diag')
     parser.add_argument('-b', help='balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
-    parser.add_argument('--seed', help='set random seed. If comma separated, will be used per iteration', dest='seed', type=int, required=False, default=None)
+    parser.add_argument('--seed', help='set random seed. If comma separated, will be used per iteration', dest='seed', type=int, nargs='+', required=False, default=None)
     parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)
+    parser.add_argument('--iterations', help='number of times to run the model before choosing the best solution', dest='iterations', type=int, required=False, default=10)
     parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
     parser.add_argument('--kwargs', help='additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
     args = parser.parse_args()
@@ -79,12 +80,9 @@ def main():
         interactions_mat = lambda: np.load(filename)
 
     if args.balance:
+        print('Will balance the matrix before fit')
         interactions_mat_unbalanced = interactions_mat
         interactions_mat = lambda: balance(interactions_mat_unbalanced())
-
-    if args.seed is not None:
-        print(f'Setting random seed to {args.seed}')
-        np.random.seed(args.seed)
 
     optimize_options = parse_keyvalue(args.optimize)
     print(f"Optimize overrides: {optimize_options}")
@@ -97,16 +95,33 @@ def main():
         print(f'Using {args.init} to init fit')
         init_values = np.load(args.init)['parameters']
 
-    print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}. Balance = {args.balance}.')
+    print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}')
+    durations = []
+    best_score = np.inf
+    best_args = None
     start_time = time.time()
-    probabilities_vector, state_weights, cis_dd_power, trans_dd, optimize_result = \
-            fit(number_of_states=nstates, weights_shape=shape, init_values=init_values, cis_lengths=cis_lengths,
+    for i, s in itertools.zip_longest(range(args.iterations), args.seed):
+        print(f"* Starting iteration number {i+1}")
+        if s is not None:
+            print(f'** Setting random seed to {s}')
+            np.random.seed(s)
+        ret = fit(interactions_mat(), number_of_states=nstates, weights_shape=shape, init_values=init_values, cis_lengths=cis_lengths,
                     optimize_options=optimize_options, **kwargs)
-    end_time = time.time()
-    print(f'Took {end_time - start_time} seconds')
+        end_time = time.time()
+        ret_score = ret[-1].fun
+        if ret_score < best_score:
+            print(f"** Changing best solution to iteration {i+1}")
+            best_score = ret_score
+            best_args = ret
+        durations.append(end_time - start_time)
+        start_time = end_time
+    assert best_args is not None
+    probabilities_vector, state_weights, cis_dd_power, trans_dd, optimize_result = best_args
+    print(f'Time per iteration was: {durations} seconds')
 
     model_params = dict(state_probabilities=probabilities_vector, state_weights=state_weights, cis_dd_power=cis_dd_power, trans_dd=trans_dd, cis_lengths=cis_lengths)
-    metadata = dict(optimize_success=optimize_result.success, optimize_iterations=optimize_result.nit, optimize_value=optimize_result.fun, args=vars(args))
+    metadata = dict(optimize_success=optimize_result.success, optimize_iterations=optimize_result.nit, optimize_value=optimize_result.fun, args=vars(args),
+            durations=durations)
     np.savez_compressed(output_file, parameters=model_params, metadata=metadata)
     print(f'Data saved into {output_file} in npz format.')
  
