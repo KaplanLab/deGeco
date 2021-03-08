@@ -35,10 +35,6 @@ def parse_keyvalue(s):
     return d
 
 def main():
-    #################################################################################################
-    # Calculating the maximal likelihood probabilities vector and distance decay power of the model #
-    #################################################################################################
-
     parser = argparse.ArgumentParser(description = 'Experiment number (diferent initial random vectors)')
     parser.add_argument('-m', help='file name', dest='filename', type=str, required=True)
     parser.add_argument('-t', help='file type', dest='type', type=str, choices=['mcool, numpy, auto'], default='auto')
