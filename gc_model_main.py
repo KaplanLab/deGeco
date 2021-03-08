@@ -133,14 +133,15 @@ def main():
 
     print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}. Balance = {args.balance}.')
     start_time = time.time()
-    probabilities_vector, state_weights, cis_dd_power, trans_dd = \
+    probabilities_vector, state_weights, cis_dd_power, trans_dd, optimize_result = \
             fit_func(number_of_states=nstates, weights_shape=shape, cis_lengths=cis_lengths,
                     optimize_options=optimize_options, **kwargs)
     end_time = time.time()
     print(f'Took {end_time - start_time} seconds')
 
-    np.savez_compressed(output_file, lambdas=probabilities_vector, weights=state_weights, alpha=cis_dd_power, beta=trans_dd, 
-            seed=args.seed)
+    model_params = dict(state_probabilities=probabilities_vector, state_weights=state_weights, cis_dd_power=cis_dd_power, trans_dd=trans_dd, cis_lengths=cis_lengths)
+    metadata = dict(optimize_success=optimize_result.success, optimize_iterations=optimize_result.nit, optimize_value=optimize_result.fun, args=vars(args))
+    np.savez_compressed(output_file, parameters=model_params, metadata=metadata)
     print(f'Data saved into {output_file} in npz format.')
  
 if __name__ == '__main__':

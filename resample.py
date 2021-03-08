@@ -39,12 +39,12 @@ def main():
     else:
         raise RuntimeError("either --reads or -m, -c and -r must be passed")
     print(f"Reading fit from {args.fit} and converting to probabilities")
-    fit = np.load(args.fit)
-    fit_mat = gc.generate_interactions_matrix(fit['lambdas'], fit['weights'], fit['alpha'], fit['beta'])
+    fit = np.load(args.fit, allow_pickle=True)['parameters'][()]
+    fit_mat = gc.generate_interactions_matrix(**fit)
     print(f"Resampling from fit using {reads} reads")
     resampled = resample_matrix(fit_mat, reads)
     print(f"Resetting NaN columns")
-    nans = np.isnan(fit['lambdas']).all(axis=1)
+    nans = np.isnan(fit['state_probabilities']).all(axis=1)
     resampled[nans, :] = resampled[:, nans] = np.nan
     print(f'Saving into {args.output}')
     np.save(args.output, resampled)

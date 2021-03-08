@@ -145,7 +145,7 @@ def regularization_empty(*args):
 REGULARIZATIONS = dict(l1diff=regularization_l1diff, l2diff=regularization_l2diff, nonuniform=regularization_nonuniform)
 
 def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='diag', lambdas_hyper=None,
-        init_values={}, fixed_values={}, optimize_options={}, instances=1, R=0, regularization=None):
+        init_values={}, fixed_values={}, optimize_options={}, R=0, regularization=None):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
 
@@ -167,8 +167,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
     lambdas_function, probabilities_params_count = _lambdas_hyper(non_nan_mask, number_of_states)
     weights_function, weights_param_count, weight_init = weight_hyperparams(weights_shape, number_of_states)
 
-    # x0 is a function so we can run it several times and get different values
-    x0 = lambda: np.concatenate([
+    x0 = np.concatenate([
         init_variables(probabilities_params_count, weight_init, init_values),
         distance_decay_model.init_variables(init_values)
     ])
@@ -181,25 +180,29 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
 
     log_likelihood = log_likelihood_by(unique_interactions)
     del unique_interactions
-    _regularization_func = regularization if callable(regularization) else REGULARIZATIONS.get(regularization, regularization_empty)
+    if callable(regularization):
+        _regularization_func = regularization
+    elif regularization is None:
+        _regularization_func = regularization_empty
+    else:
+        _regularization_func = REGULARIZATIONS[regularization]
     def likelihood_minimizer(variables):
         model_params = extract_params(variables, probabilities_params_count, weights_param_count, number_of_states,
                 weights_function, lambdas_function, _cis_lengths, non_nan_mask)
         model_interactions = log_interaction_probability(*model_params)
         return -log_likelihood(model_interactions) + R * _regularization_func(*model_params)
 
-    results = [ sp.optimize.minimize(fun=value_and_grad(likelihood_minimizer), x0=x0(), method='L-BFGS-B', jac=True, 
-        bounds=bounds, options=_optimize_options) for i in range(instances) ]
-    best = min(results, key=lambda x: x.fun)
+    result = sp.optimize.minimize(fun=value_and_grad(likelihood_minimizer), x0=x0, method='L-BFGS-B', jac=True, 
+            bounds=bounds, options=_optimize_options) 
 
-    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(best.x, probabilities_params_count,
-            weights_param_count, number_of_states, weights_function, lambdas_function, _cis_lengths, non_nan_mask)
+    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, probabilities_params_count, weights_param_count,
+            number_of_states, weights_function, lambdas_function, _cis_lengths, non_nan_mask)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
 
     sorted_weights, weights_order = sort_weights(model_weights)
     sorted_probabilities = expanded_model_probabilities[:, weights_order]
     
-    return sorted_probabilities, sorted_weights, cis_dd_power, trans_dd
+    return sorted_probabilities, sorted_weights, cis_dd_power, trans_dd, result
 
 def generate_interactions_matrix(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths=None):
     """
