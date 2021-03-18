@@ -104,19 +104,33 @@ def remove_main_diag(a):
 
     return nan_in_diag
 
-def balance(matrix, epsilon=1e-5):
+def balance(matrix, epsilon=1e-5, ignorezeros=False):
     """
-    Ensure all rows and columns of the given matrix have the same mean, up to epsilon
+    Ensure all rows and columns of the given matrix have the same mean, up to epsilon.
+
+    If ignorezeros=True, all-zero rows/cols will be ignored. Otherwise, they will be turned to NaNs.
     """
+    nans = np.isnan(matrix)
     matrix = np.nan_to_num(matrix)
+    non_zero_mask = ~np.all(matrix == 0, axis=1)
+    _matrix = matrix[non_zero_mask, :][:, non_zero_mask]
     column_mean = lambda m: np.mean(m, axis=0)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        colmean = column_mean(matrix)
+        colmean = column_mean(_matrix)
         while np.any(np.abs(colmean - 1.0) > epsilon):
-          matrix = matrix / colmean
-          matrix = matrix.T # transpose and do the same for rows
-          colmean = column_mean(matrix)
+          np.divide(_matrix, colmean, out=_matrix)
+          _matrix = _matrix.T # transpose and do the same for rows
+          colmean = column_mean(_matrix)
 
+    # Restore all-zeros rows/cols
+    for src, dst in enumerate(np.nonzero(non_zero_mask)[0]):
+        matrix[dst][non_zero_mask] = _matrix[src]
+    # Restore nans
+    matrix[nans] = np.nan
+    if not ignorezeros:
+        matrix[~non_zero_mask] = np.nan
+        matrix[:, ~non_zero_mask] = np.nan
     return matrix
 

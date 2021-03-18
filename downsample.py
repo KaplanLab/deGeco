@@ -35,7 +35,7 @@ def downsample_matrix(hic_mat, samples):
     print("To symm")
     downsampled_mat = array_utils.triangle_to_symmetric(hic_mat.shape[0], downsampled_lower_tri, k=-1, fast=True)
     print("Balancing")
-    balanced_mat = array_utils.balance(downsampled_mat)
+    balanced_mat = array_utils.balance(downsampled_mat, ignorezeros=True)
     
     return balanced_mat
 

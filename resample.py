@@ -10,7 +10,7 @@ def resample_matrix(hic_mat, reads):
     resampled_reads = np.random.multinomial(reads, interaction_probabilities, size=1)
     resampled_mat = array_utils.triangle_to_symmetric(hic_mat.shape[0], resampled_reads, k=-1, fast=True)
 
-    return array_utils.balance(resampled_mat)
+    return array_utils.balance(resampled_mat, ignorezeros=True)
 
 def main():
     parser = argparse.ArgumentParser(description = 'Experiment number (diferent initial random vectors)')
