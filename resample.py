@@ -12,9 +12,15 @@ def resample_matrix(hic_mat, reads):
 
     return array_utils.balance(resampled_mat, ignorezeros=True)
 
+def int_or_float(s):
+    try:
+        return int(s)
+    except ValueError:
+        return float(s)
+
 def main():
     parser = argparse.ArgumentParser(description = 'Experiment number (diferent initial random vectors)')
-    parser.add_argument('--reads', help='reads', dest='reads', type=int, required=False)
+    parser.add_argument('--reads', help='reads (number or ratio from -m)', dest='reads', type=int_or_float, required=False, default=100.0)
     parser.add_argument('-m', help='file name', dest='filename', type=str, required=False)
     parser.add_argument('-c', help='chromosome', dest='chromosome', type=str, required=False)
     parser.add_argument('-r', help='resolution', dest='resolution', type=str, required=False)
@@ -28,16 +34,22 @@ def main():
         np.random.seed(args.seed)
 
     start = time.time()
-    if args.reads is not None:
-        print(f"Using {args.reads} from command line")
+    if isinstance(args.reads, int) :
+        if args.reads < 0:
+            raise RuntimeError("--reads must be positive")
+        print(f"Using {args.reads} reads from command line")
         reads = args.reads
-    elif args.filename is not None and args.chromosome is not None and args.resolution is not None:
-        print(f"Getting number of reads for chr {args.chromosome} at resolution {args.resolution} from {args.filename}")
+    else: # args.reads is float
+        if args.filename is None or args.chromosome is None or args.resolution is None:
+            raise RuntimeError("either -m, -c and -r must be passed or --reads must be passed an integer")
+        if args.reads  < 0 or args.reads > 1:
+            raise RuntimeError("--reads ratio must be between 0 and 1")
+        print(f"Using {args.reads:.2%} of reads of chr {args.chromosome} at resolution {args.resolution} from {args.filename}")
         unbalanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=False)
-        reads = np.nansum(array_utils.get_lower_triangle(unbalanced))
-        print(f"Data has {reads} reads")
-    else:
-        raise RuntimeError("either --reads or -m, -c and -r must be passed")
+        total_reads = np.nansum(array_utils.get_lower_triangle(unbalanced))
+        reads = total_reads * args.reads
+        print(f"Data has {total_reads} reads, using {reads}")
+
     print(f"Reading fit from {args.fit} and converting to probabilities")
     fit = np.load(args.fit, allow_pickle=True)['parameters'][()]
     fit_mat = gc.generate_interactions_matrix(**fit)
