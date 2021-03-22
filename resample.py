@@ -6,9 +6,11 @@ import numpy as np
 import time
 
 def resample_matrix(hic_mat, reads):
+    nans = np.all(np.isnan(hic_mat), axis=1)
     interaction_probabilities = np.nan_to_num(array_utils.get_lower_triangle(array_utils.normalize_tri_l1(hic_mat)))
     resampled_reads = np.random.multinomial(reads, interaction_probabilities, size=1)
     resampled_mat = array_utils.triangle_to_symmetric(hic_mat.shape[0], resampled_reads, k=-1, fast=True)
+    resampled_mat[nans, :] = resampled_mat[:, nans] = np.nan
 
     return array_utils.balance(resampled_mat, ignorezeros=True)
 
@@ -55,9 +57,6 @@ def main():
     fit_mat = gc.generate_interactions_matrix(**fit)
     print(f"Resampling from fit using {reads} reads")
     resampled = resample_matrix(fit_mat, reads)
-    print(f"Resetting NaN columns")
-    nans = np.isnan(fit['state_probabilities']).all(axis=1)
-    resampled[nans, :] = resampled[:, nans] = np.nan
     print(f'Saving into {args.output}')
     np.save(args.output, resampled)
     end = time.time()

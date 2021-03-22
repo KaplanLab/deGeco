@@ -29,11 +29,14 @@ def sample_without_replacement(vec, sample_size, max_chunk=1000):
         _sample_size -= chunk_size
     return sampled
 
-def downsample_matrix(hic_mat, samples):
+def downsample_matrix(hic_mat, samples, nans):
     print("Sampling")
     downsampled_lower_tri = sample_without_replacement(array_utils.get_lower_triangle(hic_mat), samples, max_chunk=10000000)
     print("To symm")
     downsampled_mat = array_utils.triangle_to_symmetric(hic_mat.shape[0], downsampled_lower_tri, k=-1, fast=True)
+    if nans is not None:
+        print(f"Setting NaN rows")
+        downsampled_mat[nans, :] = downsampled_mat[:, nans] = np.nan
     print("Balancing")
     balanced_mat = array_utils.balance(downsampled_mat, ignorezeros=True)
     
@@ -56,12 +59,12 @@ def main():
     start = time.time()
     print(f"Reading matrix for chr {args.chromosome} at resolution {args.resolution} from {args.filename}")
     unbalanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=False)
-    print(f"Downsampling to {args.samples} of samples")
-    downsampled = downsample_matrix(unbalanced, args.samples)
-    print(f"Resetting NaN columns")
+    print(f"Reading NaN locations")
     balanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=True)
     nans = np.isnan(balanced).all(axis=1)
-    downsampled[nans, :] = downsampled[:, nans] = np.nan
+    del balanced
+    print(f"Downsampling to {args.samples} of samples")
+    downsampled = downsample_matrix(unbalanced, args.samples, nans)
     print(f'Saving into {args.output}')
     np.save(args.output, downsampled)
     end = time.time()
