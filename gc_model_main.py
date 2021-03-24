@@ -1,3 +1,4 @@
+import runpy
 import argparse
 import os
 import sys
@@ -34,6 +35,22 @@ def parse_keyvalue(s):
             d[k] = v
     return d
 
+def read_functions(filename):
+    additional_kwargs = dict()
+    if filename is None:
+        return additional_kwargs
+    functions_module = runpy.run_path(filename)
+    
+    lambdas_hyper = functions_module.get('lambdas_hyper')
+    if lambdas_hyper is not None:
+        additional_kwargs['lambdas_hyper'] = lambdas_hyper
+
+    regularization = functions_module.get('regularization')
+    if regularization is not None:
+        additional_kwargs['regularization'] = regularization
+
+    return additional_kwargs
+
 def main():
     parser = argparse.ArgumentParser(description = 'Experiment number (diferent initial random vectors)')
     parser.add_argument('-m', help='file name', dest='filename', type=str, required=True)
@@ -48,6 +65,7 @@ def main():
     parser.add_argument('--seed', help='set random seed. If comma separated, will be used per iteration', dest='seed', type=int, nargs='+', required=False, default=None)
     parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)
     parser.add_argument('--iterations', help='number of times to run the model before choosing the best solution', dest='iterations', type=int, required=False, default=10)
+    parser.add_argument('--functions', help='Python file that includes regularization or lambdas_hyper functions', dest='functions', type=str, required=False, default=None)
     parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
     parser.add_argument('--kwargs', help='additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
     args = parser.parse_args()
@@ -80,6 +98,9 @@ def main():
         interactions_mat_unbalanced = interactions_mat
         interactions_mat = lambda: balance(interactions_mat_unbalanced())
 
+    functions_options = read_functions(args.functions)
+    print(f"Passing functions {list(functions_options.keys())}")
+
     optimize_options = parse_keyvalue(args.optimize)
     print(f"Optimize overrides: {optimize_options}")
 
@@ -102,7 +123,7 @@ def main():
             print(f'** Setting random seed to {s}')
             np.random.seed(s)
         ret = fit(interactions_mat(), number_of_states=nstates, weights_shape=shape, init_values=init_values, cis_lengths=cis_lengths,
-                    optimize_options=optimize_options, **kwargs)
+                    optimize_options=optimize_options, **functions_options, **kwargs)
         end_time = time.time()
         ret_score = ret[-1].fun
         if ret_score < best_score:
