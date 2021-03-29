@@ -12,13 +12,19 @@ def resample_matrix(hic_mat, reads):
     resampled_mat = array_utils.triangle_to_symmetric(hic_mat.shape[0], resampled_reads, k=-1, fast=True)
     resampled_mat[nans, :] = resampled_mat[:, nans] = np.nan
 
-    return array_utils.balance(resampled_mat, ignorezeros=True)
+    return resampled_mat
 
 def int_or_float(s):
     try:
         return int(s)
     except ValueError:
         return float(s)
+
+def balance(mat, coeffs=None):
+    if coeffs is None:
+        return array_utils.balance(mat, ignorezeros=True)
+
+    return mat * np.outer(coeffs, coeffs)
 
 def main():
     parser = argparse.ArgumentParser(description = 'Experiment number (diferent initial random vectors)')
@@ -29,6 +35,7 @@ def main():
     parser.add_argument('-f', help='fit filename', dest='fit', type=str, required=True)
     parser.add_argument('-o', help='output file name', dest='output', type=str, required=True)
     parser.add_argument('--seed', help='set random seed', dest='seed', type=int, required=False, default=None)
+    parser.add_argument('--balance', help='set balancing', dest='balance', type=str, required=False, choices=['yes', 'no', 'mcool'], default='yes')
     args = parser.parse_args()
 
     if args.seed is not None:
@@ -52,11 +59,26 @@ def main():
         reads = total_reads * args.reads
         print(f"Data has {total_reads} reads, using {reads}")
 
+    if args.balance != 'mcool':
+        balance_coeffs = None
+    else:
+        if args.filename is None or args.chromosome is None or args.resolution is None:
+            raise RuntimeError("-m, -c and -r must be passed for --balance mcool")
+        print(f"Reading balancing coefficients from {args.filename}")
+        coolfile = hic.cooler.Cooler(f"{args.filename}::/resolutions/{args.resolution}")
+        chr_start, chr_end = coolfile.extent(args.chromosome)
+        balance_coeffs = coolfile.bins()['weight'][chr_start:chr_end]
+
+
     print(f"Reading fit from {args.fit} and converting to probabilities")
     fit = np.load(args.fit, allow_pickle=True)['parameters'][()]
     fit_mat = gc.generate_interactions_matrix(**fit)
     print(f"Resampling from fit using {reads} reads")
     resampled = resample_matrix(fit_mat, reads)
+    if args.balance == 'no':
+        print("Skipping balancing")
+    else:
+        resampled = balance(resampled, balance_coeffs)
     print(f'Saving into {args.output}')
     np.save(args.output, resampled)
     end = time.time()
