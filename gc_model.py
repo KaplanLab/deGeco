@@ -39,80 +39,75 @@ def extract_params(variables, probabilities_params_count, weights_param_count, n
 
     return lambdas, weights, alpha, beta, cis_lengths, non_nan_mask
 
-def init_variables(probabilities_params_count, weights_init, init_values_override=None):
+def override_value(value, override, flatten_function=np.ndarray.flatten):
     """
-    Give an intial value to all the variables we optimize.
+    Override the initial value of an array parameter. If override has more than one dimension, it is
+    first flattened using flatten_function.
     """
-    if init_values_override:
-        lambdas = init_values.get('lambdas')
-        weights = init_values.get('weights')
+    if override is None:
+        return value
+    if np.ndim(override) > 1:
+        override = flatten_function(override)
+    assert np.size(override) == np.size(value), f"Override should have {np.size(value)} elements"
+
+    return override
+
+def fix_values(bounds, fixed_values, flatten_function=np.ndarray.flatten):
+    """
+    Fix values of an array parameter by changing its bounds in every index where fixed_values is not None.
+    If fixed_values has more than one dimension it is first flattened using flatten_function.
+
+    Returns the new bounds unchanged if fixed_values is None.
+    """
+    if fixed_values is None:
+        return bounds
+    if np.ndim(fixed_values) > 1:
+        fixed_values = flatten_function(fixed_values)
+    return np.array([ b if f is None else (f, f) for b, f in itertools.zip_longest(bounds, fixed_values)])
+
+def lambdas_get_hyperparams(non_nan_mask, number_of_states, lambdas_hyper=None):
+    if lambdas_hyper is None:
+        hyperparams = dict()
     else:
-        lambdas = weights = None
-    if lambdas is None:
-        prob_init = (np.random.rand(probabilities_params_count) / 2) + 0.25
-    else:
-        if np.ndim(lambdas) > 1:
-            lambdas = lambdas[~np.isnan(lambdas).all(axis=1)]
-        assert lambdas.size == probabilities_params_count
-        prob_init = np.copy(lambdas.flatten())
-
-    if weights is not None:
-        if np.ndim(weights) > 1:
-            weights = get_lower_triangle(weights, k=0)
-        assert weights.size == weights_param_count
-        weights_init = np.copy(weights.flatten())
-
-    x0 = np.concatenate((prob_init, weights_init))
-
-    return x0
-
-def init_bounds(probabilities_params_count, weights_param_count, fixed_values=None):
-    """
-    Set bound for the probability and state weights
-    """
-    prob_bounds = [(0.01, 0.99)] * probabilities_params_count 
-    weights_bounds = [(0, 1)] * weights_param_count
-    
-    if fixed_values:
-        fixed_lambdas = fixed_values.get('lambdas')
-        if fixed_lambdas is not None:
-            prob_bounds = [ o if f is None else (f, f) for o, f in itertools.zip_longest(prob_bounds, fixed_lambdas.flatten())]
-        fixed_weights = fixed_values.get('weights')
-        if fixed_weights is not None:
-            weights_bounds = [ o if f is None else (f, f) for o, f in itertools.zip_longest(weights_bounds, fixed_weights.flatten())]
-
-    bounds = np.concatenate((prob_bounds, weights_bounds), axis=0)  
-
-    return bounds
-
-def lambdas_hyper_default(non_nan_mask, number_of_states):
+        hyperparams = lambdas_hyper(non_nan_mask, number_of_states)
     non_nan_indices = non_nan_mask.sum()
-    param_count = non_nan_indices * number_of_states
-    func = lambda p: p
+    hyperparams.setdefault('param_count', non_nan_indices * number_of_states)
+    # param_function: convert a flattened list of params to a flattened lambdas array, used by extract_params()
+    hyperparams.setdefault('param_function', lambda p: p)
+    hyperparams.setdefault('init_values', (np.random.rand(hyperparams['param_count']) / 2) + 0.25)
+    hyperparams.setdefault('bounds', [(0.01, 0.99)] * hyperparams['param_count'] )
+    # flatten_function: converts a multi-dimensional array to a list of params, used to more easily init or fix values
+    hyperparams.setdefault('flatten_function', lambda a: a[non_nan_mask].flatten() )
 
-    return func, param_count
+    return hyperparams
 
-def weight_hyperparams(shape, number_of_states):
+def weights_get_hyperparams(shape, number_of_states):
     if shape == 'symmetric':
         param_function = triangle_to_symmetric
         param_count = np.tril_indices(number_of_states)[0].size
         init_values = normalize(get_lower_triangle(np.eye(number_of_states), k=0))
+        flatten_function = lambda a: get_lower_triangle(a, k=0)
     elif shape == 'diag':
         param_function = lambda n, v: np.diag(v)
         param_count = number_of_states
         init_values = normalize(np.ones(number_of_states))
+        flatten_function = np.diag
     elif shape == 'binary' or shape == 'eye':
         param_function = lambda n, v: np.eye(n)
         param_count = 1 # should be 0, but later code doesn't handle that well
         init_values = np.array([0])
+        flatten_function = lambda x: x
     elif shape == 'eye_with_empty':
         param_function = lambda n, v:  np.diag(np.concatenate([[0], np.ones(n-1)]))
         param_count = 1 # should be 0, but later code doesn't handle that well
         init_values = np.array([0])
+        flatten_function = lambda x: x
     else:
         raise ValueError("Invalid weight shape")
 
-    return param_function, param_count, init_values
+    bounds = [(0, 1)] * param_count
+    return dict(param_function=param_function, param_count=param_count, init_values=init_values, bounds=bounds,
+            flatten_function=flatten_function)
 
 def sort_weights(weights):
     self_weights = np.diag(weights)
@@ -163,16 +158,19 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
     non_nan_mask = ~np.isnan(interactions_mat).all(1)
     del interactions_mat
 
-    _lambdas_hyper = lambdas_hyper if lambdas_hyper is not None else lambdas_hyper_default
-    lambdas_function, probabilities_params_count = _lambdas_hyper(non_nan_mask, number_of_states)
-    weights_function, weights_param_count, weight_init = weight_hyperparams(weights_shape, number_of_states)
+    lambdas_hyperparams = lambdas_get_hyperparams(non_nan_mask, number_of_states, lambdas_hyper)
+    weights_hyperparams = weights_get_hyperparams(weights_shape, number_of_states)
+    model_state = (lambdas_hyperparams['param_count'], weights_hyperparams['param_count'], number_of_states,
+            weights_hyperparams['param_function'], lambdas_hyperparams['param_function'], _cis_lengths, non_nan_mask)
 
     x0 = np.concatenate([
-        init_variables(probabilities_params_count, weight_init, init_values),
+        override_value(lambdas_hyperparams['init_values'], init_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
+        override_value(weights_hyperparams['init_values'], init_values.get('state_weights'), weights_hyperparams['flatten_function']),
         distance_decay_model.init_variables(init_values)
     ])
     bounds = np.concatenate([
-        init_bounds(probabilities_params_count, weights_param_count, fixed_values),
+        fix_values(lambdas_hyperparams['bounds'], fixed_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
+        fix_values(weights_hyperparams['bounds'], fixed_values.get('state_weights'), weights_hyperparams['flatten_function']),
         distance_decay_model.init_bounds(fixed_values)
     ])
     optimize_options_defaults = dict(disp=True, ftol=1.0e-9, gtol=1e-9, eps=1e-9, maxfun=10000000, maxiter=10000000, maxls=100)
@@ -187,16 +185,14 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
     else:
         _regularization_func = REGULARIZATIONS[regularization]
     def likelihood_minimizer(variables):
-        model_params = extract_params(variables, probabilities_params_count, weights_param_count, number_of_states,
-                weights_function, lambdas_function, _cis_lengths, non_nan_mask)
+        model_params = extract_params(variables, *model_state)
         model_interactions = log_interaction_probability(*model_params)
         return -log_likelihood(model_interactions) + R * _regularization_func(*model_params)
 
     result = sp.optimize.minimize(fun=value_and_grad(likelihood_minimizer), x0=x0, method='L-BFGS-B', jac=True, 
             bounds=bounds, options=_optimize_options) 
 
-    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, probabilities_params_count, weights_param_count,
-            number_of_states, weights_function, lambdas_function, _cis_lengths, non_nan_mask)
+    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
 
     sorted_weights, weights_order = sort_weights(model_weights)

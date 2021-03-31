@@ -89,7 +89,7 @@ def main():
     init_values = {}
     if args.init:
         print(f'Using {args.init} to init fit')
-        init_values = np.load(args.init)['parameters']
+        init_values = np.load(args.init, allow_pickle=True)['parameters'][()]
 
     print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}')
     durations = []

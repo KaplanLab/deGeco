@@ -42,15 +42,15 @@ def init_variables(init_values=None):
     alpha = -1
     beta = -2
     if init_values:
-        alpha = init_values.get('alpha', alpha)
-        beta = init_values.get('beta', beta)
+        alpha = init_values.get('cis_dd_power', alpha)
+        beta = init_values.get('trans_dd', beta)
     return (alpha, beta)
 
 def init_bounds(fixed_values=None):
     bounds = [(-2, -0.5), (None, 0)]
     if fixed_values:
-        fixed_alpha = fixed_values.get('alpha')
-        fixed_beta = fixed_values.get('beta')
+        fixed_alpha = fixed_values.get('cis_dd_power')
+        fixed_beta = fixed_values.get('trans_dd')
         bounds[0] = bounds[0] if fixed_alpha is None else (fixed_alpha, fixed_alpha)
         bounds[1] = bounds[1] if fixed_beta is None else (fixed_beta, fixed_beta)
 
