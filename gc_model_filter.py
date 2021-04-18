@@ -5,8 +5,9 @@ import os
 import numpy as np
 
 import gc_model
+import gc_datafile
 
-def get_best(files):
+def get_best(files, metadata_field='optimize_value'):
     best_filename = None
     best_score = np.inf
     for f in files:
@@ -15,8 +16,8 @@ def get_best(files):
             score, filename = get_best(npz_files)
         else:
             filename = f
-            fit = np.load(f, allow_pickle=True)
-            score = fit['metadata'][()]['optimize_value']
+            fit = gc_datafile.load(f)
+            score = fit['metadata'][metadata_field]
         if score < best_score:
             best_score = score
             best_filename = filename

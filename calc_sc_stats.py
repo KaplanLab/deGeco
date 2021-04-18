@@ -10,14 +10,15 @@ import subprocess
 import sys
 
 import gc_model as gc
+from gc_datafile import load_params
 import array_utils
 import hic_analysis as hic
 from toolz.curried import *
 
 run_dir = sys.argv[1]
 fit_to_mat = lambda fit: gc.generate_interactions_matrix(**fit)
-sc_hic = lambda s, res, reads: np.load(f"{run_dir}/no_regularization_newformat/fit_chr10_{s}st_res{res}_reads{reads}_best.npz", allow_pickle=True)['parameters'][()]
-orig = lambda s, res: np.load(f"{run_dir}/orig_chr10_{s}st_{res}_newformat.npz", allow_pickle=True)['parameters'][()]
+sc_hic = lambda s, res, reads: load_params(f"{run_dir}/no_regularization_newformat/fit_chr10_{s}st_res{res}_reads{reads}_best.npz")
+orig = lambda s, res: load_params(f"{run_dir}/orig_chr10_{s}st_{res}_newformat.npz")
 
 st = 2
 resolutions = [40000, 50000, 100000, 250000, 500000, 1000000]

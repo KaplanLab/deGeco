@@ -7,7 +7,7 @@ import numpy as np
 import itertools
 
 from gc_model import fit
-import gc_model
+import gc_datafile
 from hic_analysis import get_matrix_from_coolfile, get_chr_lengths
 from array_utils import balance
 
@@ -110,7 +110,7 @@ def main():
     init_values = {}
     if args.init:
         print(f'Using {args.init} to init fit')
-        init_values = np.load(args.init, allow_pickle=True)['parameters'][()]
+        init_values = gc_datafile.load(args.init)['parameters']
 
     print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}')
     durations = []
@@ -139,7 +139,7 @@ def main():
     model_params = dict(state_probabilities=probabilities_vector, state_weights=state_weights, cis_dd_power=cis_dd_power, trans_dd=trans_dd, cis_lengths=cis_lengths)
     metadata = dict(optimize_success=optimize_result.success, optimize_iterations=optimize_result.nit, optimize_value=optimize_result.fun, args=vars(args),
             durations=durations)
-    np.savez_compressed(output_file, parameters=model_params, metadata=metadata)
+    gc_datafile.save(output_file, parameters=model_params, metadata=metadata)
     print(f'Data saved into {output_file} in npz format.')
  
 if __name__ == '__main__':

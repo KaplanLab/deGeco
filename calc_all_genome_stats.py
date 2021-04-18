@@ -3,11 +3,11 @@ from scipy import stats
 import time
 
 import gc_model as gc
+from gc_datafile import load_params
 import array_utils
 import hic_analysis as hic
 from toolz.curried import *
 
-load_fit = lambda f: np.load(f, allow_pickle=True)['parameters'][()]
 fit_to_mat = lambda fit: gc.generate_interactions_matrix(**fit)
 
 @curry
@@ -47,7 +47,7 @@ def calc_stats(all_mat, states, instances=10):
         for k in range(instances):
             log(f"Starting run {k+1}")
             try:
-                fit = load_fit("/srv01/technion/hagaik/storage/paper/runs/all_diag_{s}st_100000_run{k+1}.npz")
+                fit = load_params("/srv01/technion/hagaik/storage/paper/runs/all_diag_{s}st_100000_run{k+1}.npz")
             except FileNotFoundError:
                 print("Not found, skipping")
                 pearson_array[i, k] = spearman_array[i, k] = lr_array[i, k] = np.nan

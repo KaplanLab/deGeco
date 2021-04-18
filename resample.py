@@ -2,6 +2,7 @@ import argparse
 import array_utils
 import hic_analysis as hic
 import gc_model as gc
+from gc_datafile import load_params
 import numpy as np
 import time
 
@@ -71,7 +72,7 @@ def main():
 
 
     print(f"Reading fit from {args.fit} and converting to probabilities")
-    fit = np.load(args.fit, allow_pickle=True)['parameters'][()]
+    fit = load_params(args.fit)
     fit_mat = gc.generate_interactions_matrix(**fit)
     print(f"Resampling from fit using {reads} reads")
     resampled = resample_matrix(fit_mat, reads)

@@ -1,7 +1,8 @@
 import argparse
 import numpy as np
+import gc_datafile
 
-def convert(old_fit, cis_lengths=None):
+def convert(old_fit, cis_lengths=None, metadata={}):
     parameters = dict(state_probabilities=old_fit['lambdas'],
                       state_weights=old_fit['weights'],
                       cis_dd_power=old_fit['alpha'],
@@ -10,7 +11,7 @@ def convert(old_fit, cis_lengths=None):
         parameters['cis_lengths'] = [old_fit['lambdas'].shape[0]]
     else:
         parameters['cis_lengths'] = cis_lengths
-    metadata = dict(seed=old_fit['seed'])
+    metadata.setdefault('seed', old_fit['seed'])
 
     return dict(parameters=parameters, metadata=metadata)
 
@@ -26,7 +27,7 @@ def main():
     print("Converting")
     new_fit = convert(old_fit, args.cis_lengths)
     print(f'Saving into {args.output}')
-    np.savez_compressed(args.output, **new_fit)
+    gc_datafile.save(args.output, **new_fit)
     print(f'Done.')
 
 if __name__ == '__main__':

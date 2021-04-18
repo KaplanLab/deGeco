@@ -9,6 +9,7 @@ from scipy import stats
 import subprocess
 
 import gc_model as gc
+from gc_datafile import load_params
 import array_utils
 import hic_analysis as hic
 from toolz.curried import *
@@ -17,7 +18,7 @@ fit2mat = lambda fit: gc.generate_interactions_matrix(**fit)
 
 batch_load = compose(map(np.load), glob.glob)
 downsampled_chr19 = lambda res, pct: np.load(f'/storage/md_kaplan/hagaik/paper/figure2/downsampled_data_noallzeros/chr19_{res}_{float(pct)}.npy')
-downsampled_fit = lambda res, pct, st: np.load(f'/storage/md_kaplan/hagaik/paper/figure2/downsampled_data_noallzeros/fit_diag_{st}st_chr19_{res}_{float(pct)}_best.npz', allow_pickle=True)['parameters'][()]
+downsampled_fit = lambda res, pct, st: load_params(f'/storage/md_kaplan/hagaik/paper/figure2/downsampled_data_noallzeros/fit_diag_{st}st_chr19_{res}_{float(pct)}_best.npz')
 
 st = 2
 resolutions = (5000, 10000, 20000)
