@@ -92,6 +92,7 @@ def main():
     else:
         cis_lengths = None
         interactions_mat = lambda: np.load(filename)
+        experiment_resolution = args.resolution or 1
 
     if args.balance:
         print('Will balance the matrix before fit')
@@ -123,7 +124,7 @@ def main():
             print(f'** Setting random seed to {s}')
             np.random.seed(s)
         ret = fit(interactions_mat(), number_of_states=nstates, weights_shape=shape, init_values=init_values, cis_lengths=cis_lengths,
-                    optimize_options=optimize_options, **functions_options, **kwargs)
+                    optimize_options=optimize_options, resolution=experiment_resolution, **functions_options, **kwargs)
         end_time = time.time()
         ret_score = ret[-1].fun
         if ret_score < best_score:

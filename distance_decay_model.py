@@ -26,14 +26,21 @@ def cis_trans_mask(cis_lengths, non_nan_mask):
     return array_utils.get_lower_triangle(cis_trans_matrix)
 
 @memoize(key=lambda args, kwargs: tuple(args[1]))
-def log_distance_vector(n, non_nan_mask):
+def log_distance_vector(n, non_nan_mask, resolution=1):
     distances_filtered = distance_matrix(n)[non_nan_mask, :][:, non_nan_mask]
-    return np.log(array_utils.get_lower_triangle(distances_filtered))
+    return np.log(array_utils.get_lower_triangle(distances_filtered)) + np.log(resolution)
 
-def log_distance_decay(cis_lengths, non_nan_mask, alpha, beta):
+def log_distance_decay(cis_lengths, non_nan_mask, alpha, beta, resolution=1):
+    """
+    cis_lengths - number of bins in matrix, can be number or array of numbers
+    non_nan_mask - mask representing which bins have values
+    alpha - power law exponent for cis interaction
+    beta - constant for trans interaction
+    resolution - size of bins in base-pairs. Can be used to get resolution-independent alpha
+    """
     n = np.sum(cis_lengths)
     mask = cis_trans_mask(cis_lengths, non_nan_mask)
-    cis_interactions = log_distance_vector(n, non_nan_mask) * alpha
+    cis_interactions = log_distance_vector(n, non_nan_mask, resolution) * alpha
     trans_interactions = np.full(cis_interactions.shape, beta)
 
     return np.where(mask, cis_interactions, trans_interactions)
