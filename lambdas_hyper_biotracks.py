@@ -5,6 +5,11 @@ import autograd.numpy as np
 # It's used to fit a version of our model where the lambdas are created using logistic regression of some biotracks, 
 # i.e. lambda = exp(Tracks @ A + b)/sum(exp(Tracks * A_i + b_i)), for some (A_i, b_i) pair per state.
 
+def hann(M, n=None):
+    if n is None:
+        n = M
+    return 0.5 - 0.5 * np.cos(2*np.pi*np.arange(n)/(M-1))
+
 def hyper_logistic_biotracks(biotracks, non_nan_mask, number_of_states, glm_func=np.exp, window=None, window_params=0):
     """
     biotracks should be of shape (n_bins, n_tracks)
@@ -23,7 +28,8 @@ def hyper_logistic_biotracks(biotracks, non_nan_mask, number_of_states, glm_func
         W = params[W_start:]
         window_instance = _window(*W)
         window_width = window_instance.size
-        windowed_biotracks = np.apply_along_axis(np.convolve, 0, non_nan_biotracks, window_instance, mode='same') / window_width
+        convolve = lambda x: np.convolve(x, window_instance, mode='same')
+        windowed_biotracks = np.apply_along_axis(convolve, 0, non_nan_biotracks) / window_width
         lambdas = glm_func((A.T @ windowed_biotracks.T + B[:, None]).T).flatten()
 
         return lambdas.flatten()
