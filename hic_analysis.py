@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 import cooler
 
 from array_utils import ensure_symmetric, normalize_tri_l1, remove_main_diag
+import gc_model_logp
 
 def get_chr_lengths(mcool_filename, experiment_resolution, chromosomes):
     """
@@ -68,6 +69,84 @@ def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome1,
         ])
 
     return alll_interactions
+
+def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, chromosome2=None, **matrix_args):
+    if resolution is not None:
+        coolfile = f'{mcool_filename}::/resolutions/{resolution}'
+    else:
+        coolfile = f'{mcool_filename}'
+    c = cooler.Cooler(coolfile)
+
+    if chromosome1 == 'all':
+        # If we fetch the entire dataset as sparse values, it's faster this way
+        mat = c.pixels(as_dict=True)[:]
+        mat['bin1_id'] = mat['bin1_id'].astype(np.int32)
+        mat['bin2_id'] = mat['bin2_id'].astype(np.int32)
+        balance_weights = c.bins()['weight'][:].to_numpy()
+        if matrix_args.get('balance', True):
+            mat['count'] = gc_model_logp.balance_counts(mat['bin1_id'], mat['bin2_id'], mat['count'], balance_weights)
+
+        mat['non_nan_mask'] = ~np.isnan(balance_weights)
+        return mat
+
+    if chromosome2 is None:
+        start, end = c.extent(chromosome1)
+        non_nan_mask = ~np.isnan(c.bins()[start:end]['weight'].to_numpy())
+        m = c.matrix(as_pixels=True)[start:end, start:end]
+        m[['bin1_id', 'bin2_id']] -= start
+    else:
+        start1, end1 = c.extent(chromosome1)
+        start2, end2 = c.extent(chromosome2)
+        if start1 > start2:
+            start1, start2 = start2, start1
+            end1, end2 = end2, end1
+        len1 = end1 - start1
+
+        non_nan_mask1 = ~np.isnan(c.bins()[start1:end1]['weight'].to_numpy())
+        m1_1 = c.matrix(as_pixels=True)[start1:end1, start1:end1]
+        m1_1[['bin1_id', 'bin2_id']] -= start1
+
+        non_nan_mask2 = ~np.isnan(c.bins()[start2:end2]['weight'].to_numpy())
+        m2_2 = c.matrix(as_pixels=True)[start2:end2, start2:end2]
+        m2_2[['bin1_id', 'bin2_id']] += -start2 + len1
+
+        m1_2 = c.matrix(as_pixels=True)[start1:end1, start2:end2]
+        m1_2['bin1_id'] -= start1
+        m1_2['bin2_id'] += -start2 + len1
+
+        non_nan_mask = np.concatenate((non_nan_mask1, non_nan_mask2))
+        m = m1_1.append(m1_2).append(m2_2).sort_values(['bin1_id', 'bin2_id'])
+
+    return dict(bin1_id=m['bin1_id'].to_numpy().astype(np.int32), bin2_id=m['bin2_id'].to_numpy().astype(np.int32),
+                count=m['balanced'].to_numpy(), non_nan_mask=non_nan_mask)
+
+
+def preprocess_sprase(sparse_data, dups='fix'):
+    bin1_id, bin2_id, count = sparse_data['bin1_id'], sparse_data['bin2_id'], sparse_data['count']
+    #_, unique_idx, inverse_idx, unique_counts = np.unique(np.vstack([bin1_id, bin2_id]), axis=1, return_index=True, return_inverse=True, return_counts=True)
+    #if dups == 'fix':
+    #    bin1_id = bin1_id[unique_idx]
+    #    bin2_id = bin2_id[unique_idx]
+    #    counts_uniq = np.zeros(unique_idx.size)
+    #    for c, t in zip(count, inverse_idx):
+    #        counts_uniq[t] += c
+    #    count = counts_uniq
+
+    #elif dups == 'ignore':
+    #    bin1_id = bin1_id[unique_idx]
+    #    bin2_id = bin2_id[unique_idx]
+    #    count = counts_uniq
+    #elif dups == 'remove':
+    #    idx_mask = unique_counts == 1
+    #    bin1_id = bin1_id[unique_idx[idx_mask]]
+    #    bin2_id = bin2_id[unique_idx[idx_mask]]
+    #    count = count[unique_idx[idx_mask]]
+    #else:
+    #    raise ValueError(f"Invalid dup: {dups}")
+
+    count[bin1_id == bin2_id] = np.nan
+
+    return dict(bin1_id=bin1_id, bin2_id=bin2_id, count=count, non_nan_mask=sparse_data.get('non_nan_mask'))
 
 def get_selector_from_coolfile(mcool_filename, resolution):
     """

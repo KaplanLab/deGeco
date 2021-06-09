@@ -7,9 +7,11 @@ import numpy as np
 import itertools
 
 from gc_model import fit
+import gc_model
 import gc_datafile
-from hic_analysis import get_matrix_from_coolfile, get_chr_lengths
+from hic_analysis import get_matrix_from_coolfile, get_sparse_matrix_from_coolfile, get_chr_lengths, preprocess_sprase
 from array_utils import balance
+from zero_sampler import ZeroSampler
 
 def detect_file_type(filename):
     if filename.endswith('.mcool'):
@@ -66,6 +68,8 @@ def main():
     parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)
     parser.add_argument('--iterations', help='number of times to run the model before choosing the best solution', dest='iterations', type=int, required=False, default=10)
     parser.add_argument('--functions', help='Python file that includes regularization or lambdas_hyper functions', dest='functions', type=str, required=False, default=None)
+    parser.add_argument('--sparse', help='Use sparse model', dest='sparse', action='store_true', default=False)
+    parser.add_argument('--zero-sample', help='Number of zeros to sample', dest='zero_sample', type=int, default=None)
     parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
     parser.add_argument('--kwargs', help='additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
     args = parser.parse_args()
@@ -76,6 +80,9 @@ def main():
         file_type = detect_file_type(filename)
     if file_type == 'mcool' and (args.chrom is None or args.resolution is None):
         print("chromosome and resolution must be given for mcool files")
+        sys.exit(1)
+    if args.sparse and args.zero_sample is None:
+        print("--zero-sample must be specified when using sparse model")
         sys.exit(1)
     output_file = args.output
     nstates = args.nstates
@@ -88,7 +95,10 @@ def main():
             chroms = [ format_chr(x) for x in args.chrom.split(',') ]
         experiment_resolution = args.resolution
         cis_lengths = get_chr_lengths(filename, experiment_resolution, chroms)
-        interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, *chroms)
+        if args.sparse:
+            interactions_mat = preprocess_sprase(get_sparse_matrix_from_coolfile(filename, experiment_resolution, *chroms))
+        else:
+            interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, *chroms)
     else:
         cis_lengths = None
         interactions_mat = lambda: np.load(filename)
@@ -113,18 +123,29 @@ def main():
         print(f'Using {args.init} to init fit')
         init_values = gc_datafile.load(args.init)['parameters']
 
+    fit_args = dict(number_of_states=nstates, weights_shape=shape, init_values=init_values, cis_lengths=cis_lengths,
+            optimize_options=optimize_options, resolution=1)
     print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}')
     durations = []
     best_score = np.inf
     best_args = None
     start_time = time.time()
+    if args.sparse:
+        nbins = interactions_mat['non_nan_mask'].shape[0]
+        nn_mask_int = interactions_mat['non_nan_mask'].astype('int8') # Workaround Cython not working with bool arrays
+        zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'], nn_mask_int)
     for i, s in itertools.zip_longest(range(args.iterations), args.seed):
         print(f"* Starting iteration number {i+1}")
         if s is not None:
             print(f'** Setting random seed to {s}')
             np.random.seed(s)
-        ret = fit(interactions_mat(), number_of_states=nstates, weights_shape=shape, init_values=init_values, cis_lengths=cis_lengths,
-                    optimize_options=optimize_options, resolution=experiment_resolution, **functions_options, **kwargs)
+        if args.sparse:
+            print(f'** Sampling {args.zero_sample} zeros')
+            sampled_zeros = zero_sampler.sample_zeros(args.zero_sample)
+            ret = gc_model.fit_sparse(interactions_mat, z_const_idx=sampled_zeros, z_count=zero_sampler.zero_count,
+                    **fit_args, **functions_options, **kwargs)
+        else:
+            ret = gc_model.fit(interactions_mat(), **fit_args, **functions_options, **kwargs)
         end_time = time.time()
         ret_score = ret[-1].fun
         if ret_score < best_score:

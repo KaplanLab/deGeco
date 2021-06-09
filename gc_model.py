@@ -4,11 +4,25 @@ from autograd import value_and_grad
 import scipy as sp
 from scipy import optimize
 import itertools
+import os
 
 from hic_analysis import preprocess, remove_unusable_bins, zeros_to_nan
 from array_utils import get_lower_triangle, normalize, nannormalize, triangle_to_symmetric, remove_main_diag
-from model_utils import log_likelihood_by, expand_by_mask
+from model_utils import log_likelihood_by, expand_by_mask, logsumexp
+import gc_model_logp
+import gc_model_logp_zeros
+import loglikelihood
 import distance_decay_model
+
+def tap(f, debug):
+    def _tap(x):
+        r = f(x)
+        if not callable(debug):
+            breakpoint()
+        else:
+            debug(r, x)
+        return r
+    return _tap
 
 def compartments_interactions(state_probabilities, state_weights):
     return get_lower_triangle(state_probabilities @ state_weights @ state_probabilities.T)
@@ -18,6 +32,32 @@ def log_interaction_probability(state_probabilities, state_weights, cis_dd_power
     compartments = np.log(compartments_interactions(state_probabilities, state_weights))
     distance_decay = distance_decay_model.log_distance_decay(cis_lengths, non_nan_mask, cis_dd_power, trans_dd, resolution)
     return compartments + distance_decay
+
+def calc_logp(lambdas, weights, alpha, beta, bin1_id, bin2_id, chr_assoc, non_nan_map):
+    bincount = bin1_id.shape[0]
+    nstates = weights.shape[0]
+
+    def a(row):
+        i = bin1_id[row]
+        j = bin2_id[row]
+        i_nn = non_nan_map[i]
+        j_nn = non_nan_map[j]
+        if i == j or i_nn < 0 or j_nn < 0:
+            return np.nan
+        # Check cis/trans
+        if chr_assoc[i] == chr_assoc[j]:
+            dd = alpha * np.log(j - i) # We iterate over the upper triangle, so i < j.
+        else:
+            dd = beta
+        gc = 0
+        for s1 in range(nstates):
+            for s2 in range(nstates):
+                gc += lambdas[i_nn, s1] * lambdas[j_nn, s2] * weights[s1, s2]
+        gc = np.log(gc)
+        return dd + gc
+
+    ret = np.array([ a(row) for row in range(bincount) ])
+    return ret[np.isfinite(ret)]
 
 def extract_params(variables, probabilities_params_count, weights_param_count, number_of_states, weights_function,
         lambdas_function, cis_lengths, non_nan_mask, resolution):
@@ -109,6 +149,31 @@ def weights_get_hyperparams(shape, number_of_states):
     return dict(param_function=param_function, param_count=param_count, init_values=init_values, bounds=bounds,
             flatten_function=flatten_function)
 
+def checkpoint_get_latest(checkpoint_dir):
+    max_iter = -np.inf
+    for f in os.listdir(checkpoint_dir):
+        try:
+            noext = int(os.path.splitext(f)[0])
+            iter_num = int(noext)
+        except ValueError:
+            continue
+        if iter_num > max_iter:
+            max_iter = iter_num
+    return max_iter
+
+def checkpoint_load(checkpoint_dir, iter_num):
+    checkpoint_path = os.path.join(checkpoint_dir, f"{iter_num}.npz")
+    params = np.load(checkpoint_path)
+
+    return params['x']
+
+def checkpoint_restore_from_dir(checkpoint_dir, x0_beginning):
+    iter_num = checkpoint_get_latest(checkpoint_dir)
+    if not np.isfinite(iter_num):
+        return 0, x0_beginning
+
+    return iter_num+1, checkpoint_load(checkpoint_dir, iter_num)
+
 def sort_weights(weights):
     self_weights = np.diag(weights)
     M = self_weights.size
@@ -140,7 +205,7 @@ def regularization_empty(*args):
 REGULARIZATIONS = dict(l1diff=regularization_l1diff, l2diff=regularization_l2diff, nonuniform=regularization_nonuniform)
 
 def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='diag', lambdas_hyper=None,
-        init_values={}, fixed_values={}, optimize_options={}, R=0, regularization=None, resolution=1):
+        init_values={}, fixed_values={}, optimize_options={}, R=0, regularization=None, resolution=1, debug=False):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
 
@@ -184,12 +249,112 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
         _regularization_func = regularization_empty
     else:
         _regularization_func = REGULARIZATIONS[regularization]
+
     def likelihood_minimizer(variables):
         model_params = extract_params(variables, *model_state)
         model_interactions = log_interaction_probability(*model_params)
         return -log_likelihood(model_interactions) + R * _regularization_func(*model_params)
 
-    result = sp.optimize.minimize(fun=value_and_grad(likelihood_minimizer), x0=x0, method='L-BFGS-B', jac=True, 
+    if debug:
+        vg = tap(value_and_grad(likelihood_minimizer), debug)
+    else:
+        vg = value_and_grad(likelihood_minimizer)
+    result = sp.optimize.minimize(fun=vg, x0=x0, method='L-BFGS-B', jac=True,
+            bounds=bounds, options=_optimize_options)
+
+    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
+    expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
+
+    sorted_weights, weights_order = sort_weights(model_weights)
+    sorted_probabilities = expanded_model_probabilities[:, weights_order]
+
+    return sorted_probabilities, sorted_weights, cis_dd_power, trans_dd, result
+
+def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', lambdas_hyper=None,
+        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='fix', cython=True, combined=True, debug=False, zeros_mask=None, checkpoint_dir=None, checkpoint_restore=True):
+    """""" # TODO: Use resolution param
+    bins_i, bins_j, counts, non_nan_mask = mat_dict['bin1_id'], mat_dict['bin2_id'], mat_dict['count'], mat_dict.get('non_nan_mask')
+    if non_nan_mask is None:
+        non_nan_mask = np.ones(np.sum(cis_lengths), dtype=bool)
+    non_nan_map = np.cumsum(non_nan_mask, dtype=int) - 1
+    non_nan_map[~non_nan_mask] = -1
+    chr_assoc = np.repeat(np.arange(np.size(cis_lengths)) , cis_lengths)
+
+    lambdas_hyperparams = lambdas_get_hyperparams(non_nan_mask, number_of_states, lambdas_hyper)
+    weights_hyperparams = weights_get_hyperparams(weights_shape, number_of_states)
+    model_state = (lambdas_hyperparams['param_count'], weights_hyperparams['param_count'], number_of_states,
+                   weights_hyperparams['param_function'], lambdas_hyperparams['param_function'], cis_lengths,
+                   non_nan_mask, None)
+
+    x0 = np.concatenate([
+        override_value(lambdas_hyperparams['init_values'], init_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
+        override_value(weights_hyperparams['init_values'], init_values.get('state_weights'), weights_hyperparams['flatten_function']),
+        distance_decay_model.init_variables(init_values)
+    ])
+    bounds = np.concatenate([
+        fix_values(lambdas_hyperparams['bounds'], fixed_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
+        fix_values(weights_hyperparams['bounds'], fixed_values.get('state_weights'), weights_hyperparams['flatten_function']),
+        distance_decay_model.init_bounds(fixed_values)
+    ])
+    optimize_options_defaults = dict(disp=True, ftol=1.0e-9, gtol=1e-9, eps=1e-9, maxfun=10000000, maxiter=10000000, maxls=100)
+    _optimize_options = { **optimize_options_defaults, **optimize_options }
+
+    if combined:
+        nbins = non_nan_mask.sum()
+        loglikelihood.preallocate(nbins, number_of_states)
+    else:
+        counts_mask = np.isfinite(counts)
+        log_likelihood = log_likelihood_by(counts[counts_mask])
+        gc_model_logp.preallocate(np.sum(counts_mask), non_nan_mask.sum(), number_of_states)
+        del counts_mask
+        if z_const_idx is not None:
+            z_const_idx_len = z_const_idx.shape[1]
+            gc_model_logp_zeros.allocate_logp(z_const_idx_len, non_nan_mask.sum(), number_of_states)
+
+    iter_count, x0 = checkpoint_restore_from_dir(checkpoint_dir, x0)
+
+    def likelihood_minimizer(variables):
+        nonlocal iter_count
+        lambdas, weights, alpha, beta, *_ = extract_params(variables, *model_state)
+
+        if combined:
+            ll = -loglikelihood.calc_likelihood(lambdas, weights, alpha, beta, bins_i, bins_j, counts,
+                    z_const_idx, z_count, chr_assoc, non_nan_map)
+        else:
+            if cython:
+                model_interactions = gc_model_logp.calc_logp(lambdas, weights, alpha, beta, bins_i, bins_j, chr_assoc, non_nan_map)
+            else:
+                model_interactions = calc_logp(lambdas, weights, alpha, beta, bins_i, bins_j, chr_assoc, non_nan_map)
+            if z_const_idx is None:
+                ll = -log_likelihood(model_interactions)
+            else:
+                if cython:
+                    zeros_interactions = gc_model_logp_zeros.calc_logp(lambdas, weights, alpha, beta, z_const_idx[0], z_const_idx[1], chr_assoc, non_nan_map)
+                else:
+                    zeros_interactions = calc_logp(lambdas, weights, alpha, beta, z_const_idx[0], z_const_idx[1], chr_assoc, non_nan_map)
+                z_const = np.log(z_count / z_const_idx_len) + logsumexp(zeros_interactions)
+                ll = -log_likelihood(model_interactions, z_const)
+
+        if checkpoint_dir:
+            try:
+                np.savez(f"{checkpoint_dir}/{iter_count}.npz",
+                         x=variables._value,
+                         lambdas=lambdas._value,
+                         weights=weights._value,
+                         alpha=alpha._value,
+                         beta=beta._value,
+                         ll=ll._value)
+            except Exception as e:
+                print("Can't save checkpoint:", e)
+        iter_count += 1
+
+        return ll
+
+    if debug:
+        vg = tap(value_and_grad(likelihood_minimizer), debug)
+    else:
+        vg = value_and_grad(likelihood_minimizer)
+    result = sp.optimize.minimize(fun=vg, x0=x0, method='L-BFGS-B', jac=True, 
             bounds=bounds, options=_optimize_options) 
 
     model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)

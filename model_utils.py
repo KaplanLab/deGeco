@@ -1,5 +1,5 @@
 import autograd.numpy as np
-from autograd.scipy.special import logsumexp
+from logsumexp import streaming_logsumexp as logsumexp
 import array_utils
 from autograd.extend import primitive, defvjp
 
@@ -11,19 +11,30 @@ def log_likelihood_by(x, A=1):
     log_z = None
 
     @primitive
-    def log_likelihood(log_p):
+    def log_likelihood(log_p, z_const=-np.inf, zeros=None):
         nonlocal x_mask
         nonlocal usable_x
         nonlocal log_z
         nonlocal x_sum
 
-        usable_log_p = log_p[x_mask]
-        assert (np.isfinite(usable_log_p).all()) == True
+        if zeros is None:
+            usable_log_p = np.append(log_p[x_mask], z_const)
+            assert (np.isfinite(usable_log_p[:-1]).all()) == True
 
-        log_z = logsumexp(usable_log_p)
-        assert (np.isfinite(log_z).all()) == True
+            # TODO: Put that in Cython to save memory - scipy's logsumexp copies its data
+            log_z = logsumexp(usable_log_p)
+            assert (np.isfinite(log_z).all()) == True
 
-        A = usable_x @ usable_log_p  - x_sum * log_z
+            A = usable_x @ usable_log_p[:-1]  - x_sum * log_z
+        else:
+            usable_log_p = log_p
+            assert (np.isfinite(usable_log_p).all()) == True
+
+            # TODO: Put that in Cython to save memory - scipy's logsumexp copies its data
+            log_z = logsumexp(np.append(usable_log_p, zeros))
+            assert (np.isfinite(log_z).all()) == True
+
+            A = usable_x @ usable_log_p  - x_sum * log_z
         return A
 
     def log_likelihood_vjp(ans, log_p):
