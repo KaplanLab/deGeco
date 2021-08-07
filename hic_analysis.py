@@ -1,7 +1,6 @@
 import numpy as np
 import warnings
 
-from matplotlib import pyplot as plt
 import cooler
 
 from array_utils import ensure_symmetric, normalize_tri_l1, remove_main_diag
