@@ -1,0 +1,6 @@
+numpy
+cython
+autograd
+toolz
+scipy
+cooler
