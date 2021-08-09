@@ -26,7 +26,7 @@ def msum(double[::1] iterable):
         partials[i:] = [x]
     return sum(partials, 0.0)
 
-cdef inline (double, double) fsum_step(double sum, double c, double x):
+cdef inline (double, double) fsum_step(double sum, double c, double x) nogil:
     cdef double t, y
 
     y = x - c

@@ -269,7 +269,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
     return sorted_probabilities, sorted_weights, cis_dd_power, trans_dd, result
 
 def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', lambdas_hyper=None,
-        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='fix', cython=True, debug=False, checkpoint_dir=None, checkpoint_restore=True):
+        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='fix', cython=True, debug=False, checkpoint_dir=None, checkpoint_restore=True, nthreads=1):
     """""" # TODO: Use resolution param
     bins_i, bins_j, counts, non_nan_mask = mat_dict['bin1_id'], mat_dict['bin2_id'], mat_dict['count'], mat_dict.get('non_nan_mask')
     if non_nan_mask is None:
@@ -299,7 +299,7 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', 
 
     if cython:
         nbins = non_nan_mask.sum()
-        loglikelihood.preallocate(nbins, number_of_states)
+        loglikelihood.preallocate(nbins, number_of_states, nthreads)
     else:
         counts_mask = np.isfinite(counts)
         log_likelihood = log_likelihood_by(counts[counts_mask])

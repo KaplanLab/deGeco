@@ -3,6 +3,7 @@ from libc.math cimport log, exp, INFINITY, NAN
 from autograd.extend import primitive, defvjp
 import numpy as np
 from libc.math cimport exp
+import cython
 
 @primitive
 def streaming_logsumexp(double [::1] a):
@@ -27,24 +28,20 @@ def streaming_logsumexp_vjp(ans, x):
 
 defvjp(streaming_logsumexp, streaming_logsumexp_vjp)
 
-cdef class StreamingLogsumexp:
-    def __cinit__(self):
-        self.alpha = -INFINITY
-        self.r = 0.0
-        self.ans = NAN
+cdef void lse_init(lse *l) nogil:
+    l.alpha = -INFINITY
+    l.r = 0.0
+    l.ans = NAN
 
-    cpdef void update(self, double x):
-        if x <= self.alpha:
-            self.r += exp(x - self.alpha)
-        else:
-            self.r *= exp(self.alpha - x)
-            self.r += 1.0
-            self.alpha = x
+cdef void lse_update(lse* l, double x) nogil:
+    if x <= l.alpha:
+        l.r += exp(x - l.alpha)
+    else:
+        l.r *= exp(l.alpha - x)
+        l.r += 1.0
+        l.alpha = x
 
-    cpdef double result(self):
-        self.ans = log(self.r) + self.alpha
+cdef double lse_result(lse* l) nogil:
+    l.ans = log(l.r) + l.alpha
 
-        return self.ans
-
-    cpdef double jac_elem(self, double x):
-        return exp(x - self.ans)
+    return l.ans

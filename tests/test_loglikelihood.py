@@ -90,9 +90,13 @@ def ref_ll_func(counts_mat, cis_lengths, non_nan_mask):
 def reference_likelihood(ref_ll_func, nn_lambdas, weights, alpha, beta):
     return ref_ll_func(nn_lambdas, weights, alpha, beta)
 
+@pytest.fixture(params=[1,2,3,4], ids=lambda x: f'{x}threads')
+def nthreads(request):
+    return request.param
+
 @pytest.fixture(autouse=True)
-def sparse_preallocate(nn_bins, nstates):
-    loglikelihood.preallocate(nn_bins, nstates)
+def sparse_preallocate(nn_bins, nstates, nthreads):
+    loglikelihood.preallocate(nn_bins, nstates, nthreads)
 
 @pytest.fixture()
 def sparse_ll_func(chr_assoc, sparse_data, zeros_data, non_nan_map):
