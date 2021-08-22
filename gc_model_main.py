@@ -62,7 +62,7 @@ def main():
             type=str, required=False)
     parser.add_argument('-kb', help='resolution (required for type=mcool)', dest='resolution', type=int, required=False)
     parser.add_argument('-n', help='number of states', dest='nstates', type=int, required=False, default=2)
-    parser.add_argument('-s', help='shape of weights matrix', dest='shape', type=str, required=False, default='diag')
+    parser.add_argument('-s', help='shape of weights matrix. Format shape[,trans_shape]', dest='shape', type=str, required=False, default='diag,diag')
     parser.add_argument('-b', help='balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
     parser.add_argument('--seed', help='set random seed. If comma separated, will be used per iteration', dest='seed', type=int, nargs='+', required=False, default=None)
     parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)
@@ -86,7 +86,10 @@ def main():
         sys.exit(1)
     output_file = args.output
     nstates = args.nstates
-    shape = args.shape
+    if ',' in args.shape:
+        cis_shape, trans_shape = args.shape.split(',')
+    else:
+        cis_shape = trans_shape = args.shape
     if file_type == 'mcool':
         if args.chrom == 'all':
             chroms = [ 'all' ]
@@ -123,9 +126,9 @@ def main():
         print(f'Using {args.init} to init fit')
         init_values = gc_datafile.load(args.init)['parameters']
 
-    fit_args = dict(number_of_states=nstates, weights_shape=shape, init_values=init_values, cis_lengths=cis_lengths,
+    fit_args = dict(number_of_states=nstates, cis_weights_shape=cis_shape, trans_weights_shape=trans_shape, init_values=init_values, cis_lengths=cis_lengths,
             optimize_options=optimize_options, resolution=1)
-    print(f'Fitting {filename} to model with {nstates} states and weight shape {shape}')
+    print(f'Fitting {filename} to model with {nstates} states and weight shape {cis_shape},{trans_shape}')
     durations = []
     best_score = np.inf
     best_args = None
@@ -155,12 +158,13 @@ def main():
         durations.append(end_time - start_time)
         start_time = end_time
     assert best_args is not None
-    probabilities_vector, state_weights, cis_dd_power, trans_dd, optimize_result = best_args
+    probabilities_vector, cis_weights, trans_weights, cis_dd_power, trans_dd, optimize_result = best_args
     print(f'Time per iteration was: {durations} seconds')
 
-    model_params = dict(state_probabilities=probabilities_vector, state_weights=state_weights, cis_dd_power=cis_dd_power, trans_dd=trans_dd, cis_lengths=cis_lengths)
-    metadata = dict(optimize_success=optimize_result.success, optimize_iterations=optimize_result.nit, optimize_value=optimize_result.fun, args=vars(args),
-            durations=durations)
+    model_params = dict(state_probabilities=probabilities_vector, cis_weights=cis_weights, trans_weights=trans_weights,
+            cis_dd_power=cis_dd_power, trans_dd=trans_dd, cis_lengths=cis_lengths)
+    metadata = dict(optimize_success=optimize_result.success, optimize_iterations=optimize_result.nit,
+            optimize_value=optimize_result.fun, args=vars(args), durations=durations)
     gc_datafile.save(output_file, parameters=model_params, metadata=metadata)
     print(f'Data saved into {output_file} in npz format.')
  

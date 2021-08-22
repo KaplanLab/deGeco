@@ -7,9 +7,17 @@ from numpy import int32
 
 import loglikelihood
 import gc_model
+from distance_decay_model import cis_trans_mask as _cis_trans_mask
 from array_utils import triangle_to_symmetric
 from autograd import jacobian
 from utils import almost_equal
+
+
+@pytest.fixture()
+def cis_trans_mask(cis_lengths):
+    # Basic cis_trans_mask, we don't deal with nan masks here
+    all_ones_mask = np.ones(np.sum(cis_lengths), dtype=bool)
+    return _cis_trans_mask(cis_lengths, all_ones_mask)
 
 
 def test_log_dd_cis(alpha, beta, chr_assoc):
@@ -24,9 +32,16 @@ def test_log_dd_trans(alpha, beta, chr_assoc):
     res = loglikelihood.calc_dd(i, j, alpha, beta, chr_assoc)
     assert res == beta
 
-def test_gc(nbins, lambdas, weights):
-    gc_reference = triangle_to_symmetric(nbins, gc_model.compartments_interactions(lambdas, weights), fast=True, k=-1)
+def test_gc_cis(nbins, lambdas, weights, trans_weights):
+    cis_trans_mask = np.zeros((nbins**2 - nbins) // 2) # all-cis cis_trans_mask
+    gc_reference = triangle_to_symmetric(nbins, gc_model.compartments_interactions(lambdas, weights, weights, cis_trans_mask), fast=True, k=-1)
     gc_res = np.array([ [ loglikelihood.calc_gc(int32(i), int32(j), lambdas, weights) for j in range(nbins) ] for i in range(nbins) ])
+    np.fill_diagonal(gc_res, 0)
+    almost_equal(gc_res, gc_reference)
+
+def test_gc_trans(nbins, chr_assoc, cis_trans_mask, lambdas, weights, trans_weights):
+    gc_reference = triangle_to_symmetric(nbins, gc_model.compartments_interactions(lambdas, weights, trans_weights, cis_trans_mask), fast=True, k=-1)
+    gc_res = np.array([ [ loglikelihood.calc_gc(int32(i), int32(j), lambdas, weights if chr_assoc[i] == chr_assoc[j] else trans_weights) for j in range(nbins) ] for i in range(nbins) ])
     np.fill_diagonal(gc_res, 0)
     almost_equal(gc_res, gc_reference)
 
@@ -51,8 +66,8 @@ def to_flatten_index(i, j, size):
     return offset + j
 
 @pytest.fixture()
-def ref_jac_lambdas(lambdas, weights):
-    return jacobian(gc_model.compartments_interactions)(lambdas, weights)
+def ref_jac_lambdas(nbins, lambdas, weights):
+    return jacobian(gc_model.compartments_interactions)(lambdas, weights, weights, (nbins,))
 
 def test_jac_lambdas(ref_jac_lambdas, nbins, nstates, lambdas, weights):
     flattened_length = (nbins**2 - nbins) // 2
@@ -66,8 +81,8 @@ def test_jac_lambdas(ref_jac_lambdas, nbins, nstates, lambdas, weights):
     almost_equal(res, ref_jac_lambdas)
 
 @pytest.fixture()
-def ref_jac_weights(lambdas, weights):
-    return jacobian(gc_model.compartments_interactions, 1)(lambdas, weights)
+def ref_jac_weights(nbins, lambdas, weights):
+    return jacobian(gc_model.compartments_interactions, 1)(lambdas, weights, weights, (nbins,))
 
 def test_jac_weights(ref_jac_weights, nbins, nstates, lambdas, weights):
     flattened_length = (nbins**2 - nbins) // 2

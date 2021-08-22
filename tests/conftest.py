@@ -46,3 +46,26 @@ def weights(nstates):
     if nstates == 3:
         return np.array([[0.5, 0, 0.05], [0, 0.2, 0.03], [0.05, 0.03, 0.22]])
     assert False
+
+@pytest.fixture()
+def trans_weights(nstates):
+    if nstates == 2:
+        return np.array([[0, 0.1], [0.1, 0.9]])
+    if nstates == 3:
+        return np.array([[0, 0, 0.05], [0, 0.4, 0.03], [0.05, 0.03, 0.42]])
+    assert False
+
+@pytest.fixture(params=[0, 0.3, 0.5], ids=lambda a: f"{a:.0%}nans")
+def non_nan_mask(request, nbins):
+    nan_number = int(nbins * request.param)
+    np.random.seed(0)
+    nan_indices = np.random.choice(nbins, size=nan_number, replace=False)
+    mask = np.ones(nbins, dtype=bool)
+    mask[nan_indices] = False
+
+    return mask
+
+@pytest.fixture()
+def nn_lambdas(lambdas, non_nan_mask):
+    return lambdas[non_nan_mask]
+

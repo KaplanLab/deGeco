@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 
-_mandatory_params = {'state_probabilities', 'state_weights', 'cis_dd_power', 'trans_dd'}
+_mandatory_params = {'state_probabilities', 'cis_weights', 'trans_weights', 'cis_dd_power', 'trans_dd'}
 _allowed_params = _mandatory_params | {'cis_lengths'}
 
 def save(filename: str, parameters: dict, metadata: dict={}) -> None:
@@ -25,6 +25,9 @@ def load(filename: str) -> dict:
         m = obj['metadata'][()]
     except KeyError:
         m = {}
+    if 'state_weights' in p:
+        p['cis_weights'] = p['trans_weights'] = p['state_weights']
+        del p['state_weights']
     assert p.keys() & _mandatory_params == _mandatory_params, f"Bad file, missing one of: {_mandatory_params}"
     assert p.keys() - _allowed_params == set(), f"Bad file, has extra parameters beyond: {_allowed_params}"
 
@@ -74,8 +77,10 @@ def main():
     if args.verbose:
         print("** Parameters info:")
         print("state probabilities shape:", fit['parameters']['state_probabilities'].shape)
-        print("state weights:")
-        print(fit['parameters']['state_weights'])
+        print("cis weights:")
+        print(fit['parameters']['cis_weights'])
+        print("trans weights:")
+        print(fit['parameters']['trans_weights'])
         print("cis dd power:", fit['parameters']['cis_dd_power'])
         print("trans dd:", fit['parameters']['trans_dd'])
         print("cis_lengths:", fit['parameters']['cis_lengths'])

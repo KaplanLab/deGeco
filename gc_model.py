@@ -22,18 +22,23 @@ def tap(f, debug):
         return r
     return _tap
 
-def compartments_interactions(state_probabilities, state_weights):
-    return get_lower_triangle(state_probabilities @ state_weights @ state_probabilities.T)
+def compartments_interactions(state_probabilities, cis_weights, trans_weights, cis_trans_mask):
+    cis_interactions = get_lower_triangle(state_probabilities @ cis_weights @ state_probabilities.T)
+    trans_interactions = get_lower_triangle(state_probabilities @ trans_weights @ state_probabilities.T)
+    combined_interactions = np.where(cis_trans_mask, cis_interactions, trans_interactions)
+    return combined_interactions
 
-def log_interaction_probability(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths,
+
+def log_interaction_probability(state_probabilities, cis_weights, trans_weights, cis_dd_power, trans_dd, cis_lengths,
         non_nan_mask, resolution):
-    compartments = np.log(compartments_interactions(state_probabilities, state_weights))
+    cis_trans_mask = distance_decay_model.cis_trans_mask(cis_lengths, non_nan_mask)
+    compartments = np.log(compartments_interactions(state_probabilities, cis_weights, trans_weights, cis_trans_mask))
     distance_decay = distance_decay_model.log_distance_decay(cis_lengths, non_nan_mask, cis_dd_power, trans_dd, resolution)
     return compartments + distance_decay
 
-def calc_logp(lambdas, weights, alpha, beta, bin1_id, bin2_id, chr_assoc, non_nan_map):
+def calc_logp(lambdas, cis_weights, trans_weights, alpha, beta, bin1_id, bin2_id, chr_assoc, non_nan_map):
     bincount = bin1_id.shape[0]
-    nstates = weights.shape[0]
+    nstates = cis_weights.shape[0]
 
     def a(row):
         i = bin1_id[row]
@@ -43,39 +48,53 @@ def calc_logp(lambdas, weights, alpha, beta, bin1_id, bin2_id, chr_assoc, non_na
         if i == j or i_nn < 0 or j_nn < 0:
             return np.nan
         # Check cis/trans
+        gc = 0
         if chr_assoc[i] == chr_assoc[j]:
             dd = alpha * np.log(j - i) # We iterate over the upper triangle, so i < j.
+            for s1 in range(nstates):
+                for s2 in range(nstates):
+                    gc += lambdas[i_nn, s1] * lambdas[j_nn, s2] * cis_weights[s1, s2]
         else:
             dd = beta
-        gc = 0
-        for s1 in range(nstates):
-            for s2 in range(nstates):
-                gc += lambdas[i_nn, s1] * lambdas[j_nn, s2] * weights[s1, s2]
+            for s1 in range(nstates):
+                for s2 in range(nstates):
+                    gc += lambdas[i_nn, s1] * lambdas[j_nn, s2] * trans_weights[s1, s2]
         gc = np.log(gc)
         return dd + gc
 
     ret = np.array([ a(row) for row in range(bincount) ])
     return ret[np.isfinite(ret)]
 
-def extract_params(variables, probabilities_params_count, weights_param_count, number_of_states, weights_function,
-        lambdas_function, cis_lengths, non_nan_mask, resolution):
+def extract_params(variables, probabilities_params_count, cis_weights_param_count, trans_weights_param_count, number_of_states,
+        cis_weights_function, trans_weights_function, lambdas_function, cis_lengths, non_nan_mask, resolution):
     """
     Slice and transform the given 1-D variable vector into the model parameters
     """
-    weights_start_idx = probabilities_params_count
-    weights_end_idx = weights_start_idx + weights_param_count
+    cis_weights_start_idx, cis_weights_end_idx,\
+            trans_weights_end_idx = np.cumsum([probabilities_params_count, cis_weights_param_count, trans_weights_param_count])
+    # If trans_weights has no params, it means it should be the same as cis_weights
+    if trans_weights_param_count == 0:
+        trans_weights_start_idx = cis_weights_start_idx
+        trans_weights_function = cis_weights_function
+    else:
+        trans_weights_start_idx = cis_weights_end_idx
 
     prob_vars = variables[:probabilities_params_count]
-    weights_vars = variables[weights_start_idx:weights_end_idx]
-    if not weights_vars.any():
+    cis_weights_vars = variables[cis_weights_start_idx:cis_weights_end_idx]
+    trans_weights_vars = variables[trans_weights_start_idx:trans_weights_end_idx]
+    if not cis_weights_vars.any():
         # make all-zero weights behave simply as all-equal weights
-        weights_vars = np.ones(weights_end_idx - weights_start_idx)
+        cis_weights_vars = np.ones(cis_weights_end_idx - cis_weights_start_idx)
+    if not trans_weights_vars.any():
+        # make all-zero weights behave simply as all-equal weights
+        trans_weights_vars = np.ones(trans_weights_end_idx - trans_weights_start_idx)
     alpha, beta = variables[-2:]
 
     lambdas = normalize(lambdas_function(prob_vars).reshape(-1, number_of_states), normalize_axis=1)
-    weights = normalize(weights_function(number_of_states, weights_vars))
+    cis_weights = normalize(cis_weights_function(number_of_states, cis_weights_vars))
+    trans_weights = normalize(trans_weights_function(number_of_states, trans_weights_vars))
 
-    return lambdas, weights, alpha, beta, cis_lengths, non_nan_mask, resolution
+    return lambdas, cis_weights, trans_weights, alpha, beta, cis_lengths, non_nan_mask, resolution
 
 def override_value(value, override, flatten_function=np.ndarray.flatten):
     """
@@ -147,6 +166,19 @@ def weights_get_hyperparams(shape, number_of_states):
     return dict(param_function=param_function, param_count=param_count, init_values=init_values, bounds=bounds,
             flatten_function=flatten_function)
 
+def weights_get_trans_hyperparams(shape, number_of_states):
+    if shape == 'none':
+        param_function = lambda n, v:  None
+        param_count = 0
+        init_values = np.array([])
+        bounds = []
+        flatten_function = lambda x: x
+
+        return dict(param_function=param_function, param_count=param_count, init_values=init_values, bounds=bounds,
+                flatten_function=flatten_function)
+
+    return weights_get_hyperparams(shape, number_of_states)
+
 def checkpoint_get_latest(checkpoint_dir):
     max_iter = -np.inf
     for f in os.listdir(checkpoint_dir):
@@ -172,10 +204,13 @@ def checkpoint_restore_from_dir(checkpoint_dir, x0_beginning):
 
     return iter_num+1, checkpoint_load(checkpoint_dir, iter_num)
 
-def sort_weights(weights):
+def sort_weights(weights, order=None):
     self_weights = np.diag(weights)
     M = self_weights.size
-    weights_order = np.argsort(self_weights)
+    if order is None:
+        weights_order = np.argsort(self_weights)
+    else:
+        weights_order = order
     sorted_weights = np.empty_like(weights)
     for i in range(M):
         w_i = weights_order[i]
@@ -184,15 +219,15 @@ def sort_weights(weights):
             sorted_weights[i, j] = weights[w_i, w_j]
     return sorted_weights, weights_order
 
-def regularization_l1diff(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths, non_nan_mask):
+def regularization_l1diff(state_probabilities, *args):
     # The likelihood has O(N^2) elements, and this sum has only O(N). To make them increase at the same rate, we multiply by N
     return state_probabilities.shape[0] * np.sum(np.abs(state_probabilities[1:] - state_probabilities[:-1]))
 
-def regularization_l2diff(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths, non_nan_mask):
+def regularization_l2diff(state_probabilities, *args):
     # The likelihood has O(N^2) elements, and this sum has only O(N). To make them increase at the same rate, we multiply by N
     return state_probabilities.shape[0] * np.linalg.norm(state_probabilities[1:] - state_probabilities[:-1], ord=2)
 
-def regularization_nonuniform(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths, non_nan_mask):
+def regularization_nonuniform(state_probabilities, *args):
     # The likelihood has O(N^2) elements, and this sum has only O(N). To make them increase at the same rate, we multiply by N
     # The minus sign is because we want larger values of this number (i.e. further than 0.5 as possible)
     return -state_probabilities.shape[0] * np.sum(np.abs(state_probabilities - 0.5))
@@ -202,7 +237,7 @@ def regularization_empty(*args):
 
 REGULARIZATIONS = dict(l1diff=regularization_l1diff, l2diff=regularization_l2diff, nonuniform=regularization_nonuniform)
 
-def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='diag', lambdas_hyper=None,
+def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shape='diag', trans_weights_shape='diag', lambdas_hyper=None,
         init_values={}, fixed_values={}, optimize_options={}, R=0, regularization=None, resolution=1, debug=False):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
@@ -211,7 +246,8 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
     :param array cis_lengths:   Optional list of lengths of cis-interacting blocks (chromosomes). If not passed,
                                 all bins are considered cis-interacting.
     :param int number_of_states: the number of possible states (compartments) for each bin
-    :param str weights_shape: how the weights matrix should look. can be: 'symmetric', 'diag', 'eye', 'eye_with_empty'
+    :param str cis_weights_shape: how the cis weights matrix should look. can be: 'symmetric', 'diag', 'eye', 'eye_with_empty'
+    :param str trans_weights_shape: how the trans weights matrix should look. Same values as cis_weights_shape + 'none' to use only the cis matrix
     :return: A tuple of each bin's state probability (shape BINSxSTATES), state-state interaction
              probabiity (shape STATES-STATES), the cis distance-decay power value and the trans decay value (scalrs)
     :rtype: tuple
@@ -222,20 +258,24 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
     del interactions_mat
 
     lambdas_hyperparams = lambdas_get_hyperparams(non_nan_mask, number_of_states, lambdas_hyper)
-    weights_hyperparams = weights_get_hyperparams(weights_shape, number_of_states)
-    model_state = (lambdas_hyperparams['param_count'], weights_hyperparams['param_count'], number_of_states,
-            weights_hyperparams['param_function'], lambdas_hyperparams['param_function'], _cis_lengths, non_nan_mask, resolution)
+    cis_weights_hyperparams = weights_get_hyperparams(cis_weights_shape, number_of_states)
+    trans_weights_hyperparams = weights_get_trans_hyperparams(trans_weights_shape, number_of_states)
+    model_state = (lambdas_hyperparams['param_count'], cis_weights_hyperparams['param_count'], trans_weights_hyperparams['param_count'],
+            number_of_states, cis_weights_hyperparams['param_function'], trans_weights_hyperparams['param_function'],
+            lambdas_hyperparams['param_function'], _cis_lengths, non_nan_mask, resolution)
 
-    x0 = np.concatenate([
+    x0 = np.concatenate(filter(np.size, [
         override_value(lambdas_hyperparams['init_values'], init_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
-        override_value(weights_hyperparams['init_values'], init_values.get('state_weights'), weights_hyperparams['flatten_function']),
+        override_value(cis_weights_hyperparams['init_values'], init_values.get('cis_weights'), cis_weights_hyperparams['flatten_function']),
+        override_value(trans_weights_hyperparams['init_values'], init_values.get('trans_weights'), trans_weights_hyperparams['flatten_function']),
         distance_decay_model.init_variables(init_values)
-    ])
-    bounds = np.concatenate([
+    ]))
+    bounds = np.concatenate(filter(np.size, [
         fix_values(lambdas_hyperparams['bounds'], fixed_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
-        fix_values(weights_hyperparams['bounds'], fixed_values.get('state_weights'), weights_hyperparams['flatten_function']),
+        fix_values(cis_weights_hyperparams['bounds'], fixed_values.get('cis_weights'), cis_weights_hyperparams['flatten_function']),
+        fix_values(trans_weights_hyperparams['bounds'], fixed_values.get('trans_weights'), trans_weights_hyperparams['flatten_function']),
         distance_decay_model.init_bounds(fixed_values)
-    ])
+    ]))
     optimize_options_defaults = dict(disp=True, ftol=1.0e-9, gtol=1e-9, eps=1e-9, maxfun=10000000, maxiter=10000000, maxls=100)
     _optimize_options = { **optimize_options_defaults, **optimize_options }
 
@@ -260,15 +300,16 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
     result = sp.optimize.minimize(fun=vg, x0=x0, method='L-BFGS-B', jac=True,
             bounds=bounds, options=_optimize_options)
 
-    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
+    model_probabilities, cis_weights, trans_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
 
-    sorted_weights, weights_order = sort_weights(model_weights)
+    sorted_cis_weights, weights_order = sort_weights(cis_weights)
+    sorted_trans_weights, _ = sort_weights(trans_weights, weights_order)
     sorted_probabilities = expanded_model_probabilities[:, weights_order]
 
-    return sorted_probabilities, sorted_weights, cis_dd_power, trans_dd, result
+    return sorted_probabilities, sorted_cis_weights, sorted_trans_weights, cis_dd_power, trans_dd, result
 
-def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', lambdas_hyper=None,
+def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='diag', trans_weights_shape='diag', lambdas_hyper=None,
         init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='fix', cython=True, debug=False, checkpoint_dir=None, checkpoint_restore=True, nthreads=1):
     """""" # TODO: Use resolution param
     bins_i, bins_j, counts, non_nan_mask = mat_dict['bin1_id'], mat_dict['bin2_id'], mat_dict['count'], mat_dict.get('non_nan_mask')
@@ -279,21 +320,24 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', 
     chr_assoc = np.repeat(np.arange(np.size(cis_lengths)) , cis_lengths)
 
     lambdas_hyperparams = lambdas_get_hyperparams(non_nan_mask, number_of_states, lambdas_hyper)
-    weights_hyperparams = weights_get_hyperparams(weights_shape, number_of_states)
-    model_state = (lambdas_hyperparams['param_count'], weights_hyperparams['param_count'], number_of_states,
-                   weights_hyperparams['param_function'], lambdas_hyperparams['param_function'], cis_lengths,
-                   non_nan_mask, None)
+    cis_weights_hyperparams = weights_get_hyperparams(cis_weights_shape, number_of_states)
+    trans_weights_hyperparams = weights_get_trans_hyperparams(trans_weights_shape, number_of_states)
+    model_state = (lambdas_hyperparams['param_count'], cis_weights_hyperparams['param_count'], trans_weights_hyperparams['param_count'],
+            number_of_states, cis_weights_hyperparams['param_function'], trans_weights_hyperparams['param_function'],
+            lambdas_hyperparams['param_function'], cis_lengths, non_nan_mask, None)
 
-    x0 = np.concatenate([
+    x0 = np.concatenate(filter(np.size, [
         override_value(lambdas_hyperparams['init_values'], init_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
-        override_value(weights_hyperparams['init_values'], init_values.get('state_weights'), weights_hyperparams['flatten_function']),
+        override_value(cis_weights_hyperparams['init_values'], init_values.get('cis_weights'), cis_weights_hyperparams['flatten_function']),
+        override_value(trans_weights_hyperparams['init_values'], init_values.get('trans_weights'), trans_weights_hyperparams['flatten_function']),
         distance_decay_model.init_variables(init_values)
-    ])
-    bounds = np.concatenate([
+    ]))
+    bounds = np.concatenate(filter(np.size, [
         fix_values(lambdas_hyperparams['bounds'], fixed_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
-        fix_values(weights_hyperparams['bounds'], fixed_values.get('state_weights'), weights_hyperparams['flatten_function']),
+        fix_values(cis_weights_hyperparams['bounds'], fixed_values.get('cis_weights'), cis_weights_hyperparams['flatten_function']),
+        fix_values(trans_weights_hyperparams['bounds'], fixed_values.get('trans_weights'), trans_weights_hyperparams['flatten_function']),
         distance_decay_model.init_bounds(fixed_values)
-    ])
+    ]))
     optimize_options_defaults = dict(disp=True, ftol=1.0e-9, gtol=1e-9, eps=1e-9, maxfun=10000000, maxiter=10000000, maxls=100)
     _optimize_options = { **optimize_options_defaults, **optimize_options }
 
@@ -311,15 +355,15 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', 
 
     def likelihood_minimizer(variables):
         nonlocal iter_count
-        lambdas, weights, alpha, beta, *_ = extract_params(variables, *model_state)
+        lambdas, cis_weights, trans_weights, alpha, beta, *_ = extract_params(variables, *model_state)
 
         if cython:
-            ll = -loglikelihood.calc_likelihood(lambdas, weights, alpha, beta, bins_i, bins_j, counts,
+            ll = -loglikelihood.calc_likelihood(lambdas, cis_weights, trans_weights, alpha, beta, bins_i, bins_j, counts,
                     z_const_idx, z_count, chr_assoc, non_nan_map)
         else:
-            model_interactions = calc_logp(lambdas, weights, alpha, beta, bins_i, bins_j, chr_assoc, non_nan_map)
+            model_interactions = calc_logp(lambdas, cis_weights, trans_weights, alpha, beta, bins_i, bins_j, chr_assoc, non_nan_map)
             if z_const_idx is not None:
-                zeros_interactions = calc_logp(lambdas, weights, alpha, beta, z_const_idx[0], z_const_idx[1], chr_assoc, non_nan_map)
+                zeros_interactions = calc_logp(lambdas, cis_weights, trans_weights, alpha, beta, z_const_idx[0], z_const_idx[1], chr_assoc, non_nan_map)
                 z_const = np.log(z_count / z_const_idx_len) + logsumexp(zeros_interactions)
             else:
                 z_const = None
@@ -330,7 +374,8 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', 
                 np.savez(f"{checkpoint_dir}/{iter_count}.npz",
                          x=variables._value,
                          lambdas=lambdas._value,
-                         weights=weights._value,
+                         cis_weights=cis_weights._value,
+                         trans_weights=trans_weights._value,
                          alpha=alpha._value,
                          beta=beta._value,
                          ll=ll._value)
@@ -347,22 +392,24 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', 
     result = sp.optimize.minimize(fun=vg, x0=x0, method='L-BFGS-B', jac=True, 
             bounds=bounds, options=_optimize_options) 
 
-    model_probabilities, model_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
+    model_probabilities, cis_weights, trans_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
 
-    sorted_weights, weights_order = sort_weights(model_weights)
+    sorted_cis_weights, weights_order = sort_weights(cis_weights)
+    sorted_trans_weights, _ = sort_weights(trans_weights, weights_order)
     sorted_probabilities = expanded_model_probabilities[:, weights_order]
     
-    return sorted_probabilities, sorted_weights, cis_dd_power, trans_dd, result
+    return sorted_probabilities, sorted_cis_weights, sorted_trans_weights, cis_dd_power, trans_dd, result
 
-def generate_interactions_matrix(state_probabilities, state_weights, cis_dd_power, trans_dd, cis_lengths=None,
-        resolution=1):
+def generate_interactions_matrix(state_probabilities, cis_weights, trans_weights, cis_dd_power, trans_dd,
+        cis_lengths=None, resolution=1):
     """
     Generate an NxN interactions matrix by using the given model parameters. Diagonal values will be
     NaN as they're aren't modeled, along with any bins that have NaN in their state probabilities.
 
     :param array state_probabilities: NxM matrix, N being the bin count and M the number of states
-    :param array state_weights: MxM symmetric matrix for state-state interaction probability
+    :param array cis_weights: MxM symmetric matrix for state-state interaction probability in cis
+    :param array trans_weights: MxM symmetric matrix for state-state interaction probability in trans
     :param number cis_dd_power: The rate by which cis interaction rate decreases with distance
     :param number trans_dd:     The constant that determines the relative strength of trans interactions
     :param array cis_lengths:   Optional list of lengths of cis-interacting blocks (chromosomes). If not passed,
@@ -374,8 +421,8 @@ def generate_interactions_matrix(state_probabilities, state_weights, cis_dd_powe
     _cis_lengths = cis_lengths if cis_lengths is not None else [state_probabilities.shape[0]]
     number_of_bins = np.sum(_cis_lengths)
     non_nan_mask = np.ones(number_of_bins, dtype=bool)
-    log_interactions = log_interaction_probability(state_probabilities, state_weights, cis_dd_power, trans_dd,
-            _cis_lengths, non_nan_mask, resolution)
+    log_interactions = log_interaction_probability(state_probabilities, cis_weights, trans_weights, cis_dd_power,
+            trans_dd, _cis_lengths, non_nan_mask, resolution)
     interactions_vec = nannormalize(np.exp(log_interactions))
     interactions_mat = remove_main_diag(triangle_to_symmetric(number_of_bins, interactions_vec, k=-1, fast=True))
 

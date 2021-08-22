@@ -23,23 +23,9 @@ from array_utils import triangle_to_symmetric, get_lower_triangle
 from model_utils import log_likelihood_by
 from utils import almost_equal
 
-@pytest.fixture(params=[0, 0.3, 0.5], ids=lambda a: f"{a:.0%}nans")
-def non_nan_mask(request, nbins):
-    nan_number = int(nbins * request.param)
-    np.random.seed(0)
-    nan_indices = np.random.choice(nbins, size=nan_number, replace=False)
-    mask = np.ones(nbins, dtype=bool)
-    mask[nan_indices] = False
-
-    return mask
-
 @pytest.fixture()
 def nn_bins(non_nan_mask):
     return non_nan_mask.sum()
-
-@pytest.fixture()
-def nn_lambdas(lambdas, non_nan_mask):
-    return lambdas[non_nan_mask]
 
 @pytest.fixture()
 def non_nan_map(non_nan_mask):
@@ -82,13 +68,13 @@ def zeros_data(nbins, counts_mat):
 @pytest.fixture()
 def ref_ll_func(counts_mat, cis_lengths, non_nan_mask):
     ll = log_likelihood_by(get_lower_triangle(counts_mat[non_nan_mask, :][:, non_nan_mask]))
-    ll_from_params = lambda l, w, a, b: ll(gc_model.log_interaction_probability(l, w, a, b, cis_lengths, non_nan_mask, 1))
+    ll_from_params = lambda l, cw, tw, a, b: ll(gc_model.log_interaction_probability(l, cw, tw, a, b, cis_lengths, non_nan_mask, 1))
 
     return ll_from_params
 
 @pytest.fixture()
-def reference_likelihood(ref_ll_func, nn_lambdas, weights, alpha, beta):
-    return ref_ll_func(nn_lambdas, weights, alpha, beta)
+def reference_likelihood(ref_ll_func, nn_lambdas, weights, trans_weights, alpha, beta):
+    return ref_ll_func(nn_lambdas, weights, trans_weights, alpha, beta)
 
 @pytest.fixture(params=[1,2,3,4], ids=lambda x: f'{x}threads')
 def nthreads(request):
@@ -100,44 +86,52 @@ def sparse_preallocate(nn_bins, nstates, nthreads):
 
 @pytest.fixture()
 def sparse_ll_func(chr_assoc, sparse_data, zeros_data, non_nan_map):
-    return lambda l, w, a, b: loglikelihood.calc_likelihood(l, w, a, b,
+    return lambda l, cw, tw, a, b: loglikelihood.calc_likelihood(l, cw, tw, a, b,
                                                             sparse_data['bin1_id'], sparse_data['bin2_id'],
                                                             sparse_data['count'], zeros_data['indices'],
                                                             zeros_data['count'], chr_assoc, non_nan_map)
 
 @pytest.fixture()
-def sparse_likelihood(sparse_ll_func, nn_lambdas, weights, alpha, beta):
-    return sparse_ll_func(nn_lambdas, weights, alpha, beta)
+def sparse_likelihood(sparse_ll_func, nn_lambdas, weights, trans_weights, alpha, beta):
+    return sparse_ll_func(nn_lambdas, weights, trans_weights, alpha, beta)
 
-@pytest.fixture(params=[0,1,2,3], ids=['lambdas', 'weights', 'alpha', 'beta'])
+@pytest.fixture(params=[0,1,2,3,4], ids=['lambdas', 'cis_weights', 'trans_weights', 'alpha', 'beta'])
 def grad_var(request):
     return request.param
 
 @pytest.fixture()
-def sparse_grad(sparse_ll_func, grad_var, nn_lambdas, weights, alpha, beta):
-        return grad(sparse_ll_func, grad_var)(nn_lambdas, weights, alpha, beta)
+def sparse_grad(sparse_ll_func, grad_var, nn_lambdas, weights, trans_weights, alpha, beta):
+        return grad(sparse_ll_func, grad_var)(nn_lambdas, weights, trans_weights, alpha, beta)
 
 @pytest.fixture()
-def reference_grad(ref_ll_func, grad_var, nn_lambdas, weights, alpha, beta):
-    if grad_var == 1:
+def reference_grad(ref_ll_func, grad_var, nn_lambdas, weights, trans_weights, alpha, beta):
+    if grad_var == 1 or grad_var == 2:
         # Workaround: reference uses lower triangle, Cython uses upper triangle. Makes weight grad transpose
-        return grad(ref_ll_func, grad_var)(nn_lambdas, weights, alpha, beta).T
-    return grad(ref_ll_func, grad_var)(nn_lambdas, weights, alpha, beta)
+        return grad(ref_ll_func, grad_var)(nn_lambdas, weights, trans_weights, alpha, beta).T
+    return grad(ref_ll_func, grad_var)(nn_lambdas, weights, trans_weights, alpha, beta)
 
-def test_none_lambdas(weights, alpha, beta, chr_assoc, sparse_data):
+def test_none_lambdas(weights, trans_weights, alpha, beta, chr_assoc, sparse_data):
     bin1_id = sparse_data['bin1_id']
     bin2_id = sparse_data['bin2_id']
     count = sparse_data['count']
     with pytest.raises(TypeError):
-        loglikelihood.calc_likelihood(None, weights, alpha, beta, bin1_id, bin2_id, count,
+        loglikelihood.calc_likelihood(None, weights, trans_weights, alpha, beta, bin1_id, bin2_id, count,
                                       None, 0, chr_assoc, np.arange(5))
 
-def test_none_weights(nn_lambdas, alpha, beta, chr_assoc, sparse_data):
+def test_none_cis_weights(nn_lambdas, trans_weights, alpha, beta, chr_assoc, sparse_data):
     bin1_id = sparse_data['bin1_id']
     bin2_id = sparse_data['bin2_id']
     count = sparse_data['count']
     with pytest.raises(TypeError):
-        loglikelihood.calc_likelihood(nn_lambdas, None, alpha, beta, bin1_id, bin2_id, count,
+        loglikelihood.calc_likelihood(nn_lambdas, None, trans_weights, alpha, beta, bin1_id, bin2_id, count,
+                                      None, 0, chr_assoc, np.arange(5))
+
+def test_none_trans_weights(nn_lambdas, weights, alpha, beta, chr_assoc, sparse_data):
+    bin1_id = sparse_data['bin1_id']
+    bin2_id = sparse_data['bin2_id']
+    count = sparse_data['count']
+    with pytest.raises(TypeError):
+        loglikelihood.calc_likelihood(nn_lambdas, weights, None, alpha, beta, bin1_id, bin2_id, count,
                                       None, 0, chr_assoc, np.arange(5))
 
 def test_value(sparse_likelihood, reference_likelihood):

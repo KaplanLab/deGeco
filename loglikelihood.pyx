@@ -12,7 +12,8 @@ import multiprocessing
 cdef int total_threads
 # dimensions: thread x bin x state x likelihood_component x fsum_component
 cdef double[:, :, :, :, ::1] grad_lambdas
-cdef double[:, :, :, :, ::1] grad_weights
+cdef double[:, :, :, :, ::1] grad_cis_weights
+cdef double[:, :, :, :, ::1] grad_trans_weights
 # dimensions: thread x likelihood_component x fsum_component
 cdef double[:, :, ::1] grad_alpha
 cdef double[:, :, ::1] grad_beta
@@ -67,7 +68,8 @@ cpdef inline (double, double) dd_jac_element(long i, long j, long[::1] chr_assoc
 
 def preallocate(nbins, nstates, nthreads=1):
     global grad_lambdas
-    global grad_weights
+    global grad_cis_weights
+    global grad_trans_weights
     global grad_alpha
     global grad_beta
     global total_threads
@@ -76,32 +78,41 @@ def preallocate(nbins, nstates, nthreads=1):
         nthreads = multiprocessing.cpu_count()
     total_threads = nthreads
 
-    grad_weights = np.empty((nthreads, nstates, nstates, 2, 2), dtype=float)
+    grad_cis_weights = np.empty((nthreads, nstates, nstates, 2, 2), dtype=float)
+    grad_trans_weights = np.empty((nthreads, nstates, nstates, 2, 2), dtype=float)
     grad_lambdas = np.empty((nthreads, nbins, nstates, 2, 2), dtype=float)
     grad_alpha = np.empty((nthreads, 2, 2), dtype=float)
     grad_beta = np.empty((nthreads, 2, 2), dtype=float)
 
 cdef void grad_reset():
     global grad_lambdas
-    global grad_weights
+    global grad_cis_weights
+    global grad_trans_weights
     global grad_alpha
     global grad_beta
 
     grad_alpha[:] = 0
     grad_beta[:] = 0
     grad_lambdas[:] = 0
-    grad_weights[:] = 0
+    grad_cis_weights[:] = 0
+    grad_trans_weights[:] = 0
 
 cdef void grad_update_gc(int thread, long i, long j, double gc, double dd, double x,
-                        double[:, ::1] lambdas, double[:, ::1] weights, double amplification=1) nogil:
+                        double[:, ::1] lambdas, double[:, ::1] weights, int cis, double amplification=1) nogil:
     global grad_lambdas
-    global grad_weights
+    global grad_cis_weights
+    global grad_trans_weights
 
     cdef double d_i, d_j, d_w
     cdef long s1, s2
     cdef Py_ssize_t statecount = weights.shape[0]
     cdef double x_gc_ratio = x / gc
+    cdef double[:, :, :, :, ::1] grad_weights
 
+    if cis:
+        grad_weights = grad_cis_weights
+    else:
+        grad_weights = grad_trans_weights
     for s1 in range(statecount):
         for s2 in range(statecount):
             d_w = weights_jac_element(i, j, s1, s2, lambdas)
@@ -126,7 +137,8 @@ cdef void grad_update_dd(int thread, long i, long j, double p, double x, long[::
 
 cdef void grad_finalize(double x_sum, double log_z, int total_threads):
     global grad_lambdas
-    global grad_weights
+    global grad_cis_weights
+    global grad_trans_weights
     global grad_alpha
     global grad_beta
 
@@ -154,47 +166,54 @@ cdef void grad_finalize(double x_sum, double log_z, int total_threads):
                     grad_lambdas[0, i, j, 0, 0] = part1_part2_diff
                 else:
                     grad_lambdas[0, i, j, 0, 0] += part1_part2_diff
-        for i in range(grad_weights.shape[1]):
-            for j in range(grad_weights.shape[2]):
-                part1_part2_diff = grad_weights[t, i, j, 0, 0] - grad_ratio * np.asarray(grad_weights[t, i, j, 1, 0])
+        for i in range(grad_cis_weights.shape[1]):
+            for j in range(grad_cis_weights.shape[2]):
+                part1_part2_diff = grad_cis_weights[t, i, j, 0, 0] - grad_ratio * np.asarray(grad_cis_weights[t, i, j, 1, 0])
                 if t == 0:
-                    grad_weights[0, i, j, 0, 0] = part1_part2_diff
+                    grad_cis_weights[0, i, j, 0, 0] = part1_part2_diff
                 else:
-                    grad_weights[0, i, j, 0, 0] += part1_part2_diff
+                    grad_cis_weights[0, i, j, 0, 0] += part1_part2_diff
+                part1_part2_diff = grad_trans_weights[t, i, j, 0, 0] - grad_ratio * np.asarray(grad_trans_weights[t, i, j, 1, 0])
+                if t == 0:
+                    grad_trans_weights[0, i, j, 0, 0] = part1_part2_diff
+                else:
+                    grad_trans_weights[0, i, j, 0, 0] += part1_part2_diff
 
-def calc_likelihood_grad_lambdas(ans_py, lambdas not None, weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count,
-        chr_assoc, non_nan_map):
+def calc_likelihood_grad_lambdas(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
     def _vjp(g):
         return g * np.asarray(grad_lambdas[0, :, :, 0, 0])
     return _vjp
 
-def calc_likelihood_grad_weights(ans_py, lambdas not None, weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count,
-        chr_assoc, non_nan_map):
+def calc_likelihood_grad_cis_weights(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
     def _vjp(g):
-        return g * np.asarray(grad_weights[0, :, :, 0, 0])
+        return g * np.asarray(grad_cis_weights[0, :, :, 0, 0])
     return _vjp
 
-def calc_likelihood_grad_alpha(ans_py, lambdas not None, weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count,
-        chr_assoc, non_nan_map):
+def calc_likelihood_grad_trans_weights(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
+    def _vjp(g):
+        return g * np.asarray(grad_trans_weights[0, :, :, 0, 0])
+    return _vjp
+
+def calc_likelihood_grad_alpha(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
     def _vjp(g):
         return g * grad_alpha[0, 0, 0]
     return _vjp
     
-def calc_likelihood_grad_beta(ans_py, lambdas not None, weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count,
-        chr_assoc, non_nan_map):
+def calc_likelihood_grad_beta(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
     def _vjp(g):
         return g * grad_beta[0, 0, 0]
     return _vjp
 
 @primitive
-def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] weights not None, double alpha, double beta,
-        int[::1] bin1_id, int[::1] bin2_id, double[::1] count, int [:, ::1] zero_indices,
-        long total_zero_count, long[::1] chr_assoc, long[::1] non_nan_map):
-
+def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights not None,
+        double[:, ::1] trans_weights not None, double alpha, double beta, int[::1] bin1_id, int[::1] bin2_id,
+        double[::1] count, int [:, ::1] zero_indices, long total_zero_count, long[::1] chr_assoc,
+        long[::1] non_nan_map):
     cdef Py_ssize_t bincount = bin1_id.shape[0]
     cdef Py_ssize_t zerocount = zero_indices.shape[1] if zero_indices is not None else 0
     cdef Py_ssize_t row1, row2
@@ -232,14 +251,18 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] weights not 
                 continue
             x1 = count[row1]
             log_dd1 = calc_dd(i1, j1, alpha, beta, chr_assoc)
-            gc1 = calc_gc(i_nn1, j_nn1, lambdas, weights)
+            if chr_assoc[i1] == chr_assoc[j1]:
+                gc1 = calc_gc(i_nn1, j_nn1, lambdas, cis_weights)
+                grad_update_gc(thread_num, i_nn1, j_nn1, gc1, exp(log_dd1), x1, lambdas, cis_weights, cis=True)
+            else:
+                gc1 = calc_gc(i_nn1, j_nn1, lambdas, trans_weights)
+                grad_update_gc(thread_num, i_nn1, j_nn1, gc1, exp(log_dd1), x1, lambdas, trans_weights, cis=False)
             log_gc1 = log(gc1)
             logp1 = log_dd1 + log_gc1
             ll_local[0], ll_local[1] = fsum_step(ll_local[0], ll_local[1], x1 * logp1)
             x_sum_local[0], x_sum_local[1] = fsum_step(x_sum_local[0], x_sum_local[1], x1) # TODO: Do this once, take as parameter?
             logsumexp.lse_update(log_z_obj_local, logp1)
 
-            grad_update_gc(thread_num, i_nn1, j_nn1, gc1, exp(log_dd1), x1, lambdas, weights)
             grad_update_dd(thread_num, i1, j1, exp(logp1), x1, chr_assoc)
         with gil:
             PyErr_CheckSignals()
@@ -254,12 +277,16 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] weights not 
             if i2 == j2 or i_nn2 < 0 or j_nn2 < 0:
                 continue
             log_dd2 = calc_dd(i2, j2, alpha, beta, chr_assoc)
-            gc2 = calc_gc(i_nn2, j_nn2, lambdas, weights)
+            if chr_assoc[i2] == chr_assoc[j2]:
+                gc2 = calc_gc(i_nn2, j_nn2, lambdas, cis_weights)
+                grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, cis_weights, cis=True)
+            else:
+                gc2 = calc_gc(i_nn2, j_nn2, lambdas, trans_weights)
+                grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, trans_weights, cis=False, amplification=zero_amplification)
             log_gc2 = log(gc2)
             logp2 = log_dd2 + log_gc2
             logsumexp.lse_update(log_z_obj_local, logp2 + log_amplification)
 
-            grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, weights, zero_amplification)
             grad_update_dd(thread_num, i2, j2, exp(logp2), x2, chr_assoc, zero_amplification)
         with gil:
             PyErr_CheckSignals()
@@ -279,7 +306,8 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] weights not 
 
 defvjp(calc_likelihood,
        calc_likelihood_grad_lambdas,
-       calc_likelihood_grad_weights,
+       calc_likelihood_grad_cis_weights,
+       calc_likelihood_grad_trans_weights,
        calc_likelihood_grad_alpha,
        calc_likelihood_grad_beta,
 )
