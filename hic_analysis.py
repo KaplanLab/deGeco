@@ -74,7 +74,7 @@ def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome1,
 
     return all_interactions
 
-def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *chroms, **matrix_args):
+def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *chroms, transonly=False, **matrix_args):
     if resolution is not None:
         coolfile = f'{mcool_filename}::/resolutions/{resolution}'
     else:
@@ -112,6 +112,8 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
 
             if c1 == c2:
                 non_nan_masks.append(~np.isnan(c.bins()[start1:end1]['weight'].to_numpy()))
+                if transonly:
+                    continue
 
             df = c.matrix(as_pixels=True)[start1:end1, start2:end2]
             df[['bin1_id']] += -start1 + offsets[i1]

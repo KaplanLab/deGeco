@@ -72,6 +72,7 @@ def main():
     parser.add_argument('--zero-sample', help='Number of zeros to sample', dest='zero_sample', type=int, default=None)
     parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
     parser.add_argument('--kwargs', help='additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
+    parser.add_argument('--transonly', help='transonly', dest='transonly', action='store_true', default=False)
     args = parser.parse_args()
     
     filename = args.filename
@@ -99,7 +100,7 @@ def main():
         experiment_resolution = args.resolution
         cis_lengths = get_chr_lengths(filename, experiment_resolution, chroms)
         if args.sparse:
-            interactions_mat = preprocess_sprase(get_sparse_matrix_from_coolfile(filename, experiment_resolution, *chroms))
+            interactions_mat = preprocess_sprase(get_sparse_matrix_from_coolfile(filename, experiment_resolution, *chroms, transonly=args.transonly))
         else:
             interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, *chroms)
     else:
@@ -136,7 +137,10 @@ def main():
     if args.sparse:
         nbins = interactions_mat['non_nan_mask'].shape[0]
         nn_mask_int = interactions_mat['non_nan_mask'].astype('int8') # Workaround Cython not working with bool arrays
-        zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'], nn_mask_int)
+        if args.transonly:
+            zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'], nn_mask_int, cis_lengths, 'trans')
+        else:
+            zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'], nn_mask_int)
     for i, s in itertools.zip_longest(range(args.iterations), args.seed):
         print(f"* Starting iteration number {i+1}")
         if s is not None:
