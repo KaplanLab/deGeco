@@ -237,7 +237,7 @@ def regularization_empty(*args):
 
 REGULARIZATIONS = dict(l1diff=regularization_l1diff, l2diff=regularization_l2diff, nonuniform=regularization_nonuniform)
 
-def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shape='diag', trans_weights_shape='diag', lambdas_hyper=None,
+def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shape='symmetric', trans_weights_shape='symmetric', lambdas_hyper=None,
         init_values={}, fixed_values={}, optimize_options={}, R=0, regularization=None, resolution=1, debug=False):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
@@ -309,7 +309,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shap
 
     return sorted_probabilities, sorted_cis_weights, sorted_trans_weights, cis_dd_power, trans_dd, result
 
-def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='diag', trans_weights_shape='diag', lambdas_hyper=None,
+def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='symmetric', trans_weights_shape='symmetric', lambdas_hyper=None,
         init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='fix', cython=True, debug=False, checkpoint_dir=None, checkpoint_restore=True, nthreads=1):
     """""" # TODO: Use resolution param
     bins_i, bins_j, counts, non_nan_mask = mat_dict['bin1_id'], mat_dict['bin2_id'], mat_dict['count'], mat_dict.get('non_nan_mask')
