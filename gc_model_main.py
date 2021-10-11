@@ -64,7 +64,7 @@ def main():
     parser.add_argument('-n', help='number of states', dest='nstates', type=int, required=False, default=2)
     parser.add_argument('-s', help='shape of weights matrix. Format shape[,trans_shape]', dest='shape', type=str, required=False, default='diag,diag')
     parser.add_argument('-b', help='balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
-    parser.add_argument('--seed', help='set random seed. If comma separated, will be used per iteration', dest='seed', type=int, nargs='+', required=False, default=None)
+    parser.add_argument('--seed', help='set random seed. If comma separated, will be used per iteration', dest='seed', type=int, nargs='+', required=False, default=[])
     parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)
     parser.add_argument('--iterations', help='number of times to run the model before choosing the best solution', dest='iterations', type=int, required=False, default=10)
     parser.add_argument('--functions', help='Python file that includes regularization or lambdas_hyper functions', dest='functions', type=str, required=False, default=None)
