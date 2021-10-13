@@ -128,28 +128,29 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
                 count=m['balanced'].to_numpy(), non_nan_mask=non_nan_mask)
 
 
-def preprocess_sprase(sparse_data, dups='fix'):
+def preprocess_sprase(sparse_data, dups='keep'):
     bin1_id, bin2_id, count = sparse_data['bin1_id'], sparse_data['bin2_id'], sparse_data['count']
-    _, unique_idx, inverse_idx, unique_counts = np.unique(np.vstack([bin1_id, bin2_id]), axis=1, return_index=True, return_inverse=True, return_counts=True)
-    if dups == 'fix':
-        bin1_id = bin1_id[unique_idx]
-        bin2_id = bin2_id[unique_idx]
-        counts_uniq = np.zeros(unique_idx.size)
-        for c, t in zip(count, inverse_idx):
-            counts_uniq[t] += c
-        count = counts_uniq
+    if dups != 'keep':
+        _, unique_idx, inverse_idx, unique_counts = np.unique(np.vstack([bin1_id, bin2_id]), axis=1, return_index=True, return_inverse=True, return_counts=True)
+        if dups == 'fix':
+            bin1_id = bin1_id[unique_idx]
+            bin2_id = bin2_id[unique_idx]
+            counts_uniq = np.zeros(unique_idx.size)
+            for c, t in zip(count, inverse_idx):
+                counts_uniq[t] += c
+            count = counts_uniq
 
-    elif dups == 'ignore':
-        bin1_id = bin1_id[unique_idx]
-        bin2_id = bin2_id[unique_idx]
-        count = counts_uniq
-    elif dups == 'remove':
-        idx_mask = unique_counts == 1
-        bin1_id = bin1_id[unique_idx[idx_mask]]
-        bin2_id = bin2_id[unique_idx[idx_mask]]
-        count = count[unique_idx[idx_mask]]
-    else:
-        raise ValueError(f"Invalid dup: {dups}")
+        elif dups == 'ignore':
+            bin1_id = bin1_id[unique_idx]
+            bin2_id = bin2_id[unique_idx]
+            count = counts_uniq
+        elif dups == 'remove':
+            idx_mask = unique_counts == 1
+            bin1_id = bin1_id[unique_idx[idx_mask]]
+            bin2_id = bin2_id[unique_idx[idx_mask]]
+            count = count[unique_idx[idx_mask]]
+        else:
+            raise ValueError(f"Invalid dup: {dups}")
 
     count[bin1_id == bin2_id] = np.nan
 
