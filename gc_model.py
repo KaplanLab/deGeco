@@ -9,8 +9,6 @@ import os
 from hic_analysis import preprocess, remove_unusable_bins, zeros_to_nan
 from array_utils import get_lower_triangle, normalize, nannormalize, triangle_to_symmetric, remove_main_diag
 from model_utils import log_likelihood_by, expand_by_mask, logsumexp
-import gc_model_logp
-import gc_model_logp_zeros
 import loglikelihood
 import distance_decay_model
 
@@ -271,7 +269,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, weights_shape='d
     return sorted_probabilities, sorted_weights, cis_dd_power, trans_dd, result
 
 def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', lambdas_hyper=None,
-        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='fix', cython=True, combined=True, debug=False, zeros_mask=None, checkpoint_dir=None, checkpoint_restore=True):
+        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='fix', cython=True, debug=False, checkpoint_dir=None, checkpoint_restore=True):
     """""" # TODO: Use resolution param
     bins_i, bins_j, counts, non_nan_mask = mat_dict['bin1_id'], mat_dict['bin2_id'], mat_dict['count'], mat_dict.get('non_nan_mask')
     if non_nan_mask is None:
@@ -299,17 +297,15 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', 
     optimize_options_defaults = dict(disp=True, ftol=1.0e-9, gtol=1e-9, eps=1e-9, maxfun=10000000, maxiter=10000000, maxls=100)
     _optimize_options = { **optimize_options_defaults, **optimize_options }
 
-    if combined:
+    if cython:
         nbins = non_nan_mask.sum()
         loglikelihood.preallocate(nbins, number_of_states)
     else:
         counts_mask = np.isfinite(counts)
         log_likelihood = log_likelihood_by(counts[counts_mask])
-        gc_model_logp.preallocate(np.sum(counts_mask), non_nan_mask.sum(), number_of_states)
         del counts_mask
         if z_const_idx is not None:
             z_const_idx_len = z_const_idx.shape[1]
-            gc_model_logp_zeros.allocate_logp(z_const_idx_len, non_nan_mask.sum(), number_of_states)
 
     iter_count, x0 = checkpoint_restore_from_dir(checkpoint_dir, x0)
 
@@ -317,23 +313,17 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, weights_shape='diag', 
         nonlocal iter_count
         lambdas, weights, alpha, beta, *_ = extract_params(variables, *model_state)
 
-        if combined:
+        if cython:
             ll = -loglikelihood.calc_likelihood(lambdas, weights, alpha, beta, bins_i, bins_j, counts,
                     z_const_idx, z_count, chr_assoc, non_nan_map)
         else:
-            if cython:
-                model_interactions = gc_model_logp.calc_logp(lambdas, weights, alpha, beta, bins_i, bins_j, chr_assoc, non_nan_map)
-            else:
-                model_interactions = calc_logp(lambdas, weights, alpha, beta, bins_i, bins_j, chr_assoc, non_nan_map)
-            if z_const_idx is None:
-                ll = -log_likelihood(model_interactions)
-            else:
-                if cython:
-                    zeros_interactions = gc_model_logp_zeros.calc_logp(lambdas, weights, alpha, beta, z_const_idx[0], z_const_idx[1], chr_assoc, non_nan_map)
-                else:
-                    zeros_interactions = calc_logp(lambdas, weights, alpha, beta, z_const_idx[0], z_const_idx[1], chr_assoc, non_nan_map)
+            model_interactions = calc_logp(lambdas, weights, alpha, beta, bins_i, bins_j, chr_assoc, non_nan_map)
+            if z_const_idx is not None:
+                zeros_interactions = calc_logp(lambdas, weights, alpha, beta, z_const_idx[0], z_const_idx[1], chr_assoc, non_nan_map)
                 z_const = np.log(z_count / z_const_idx_len) + logsumexp(zeros_interactions)
-                ll = -log_likelihood(model_interactions, z_const)
+            else:
+                z_const = None
+            ll = -log_likelihood(model_interactions, z_const)
 
         if checkpoint_dir:
             try:

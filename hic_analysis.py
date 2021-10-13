@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import cooler
 
 from array_utils import ensure_symmetric, normalize_tri_l1, remove_main_diag
-import gc_model_logp
+from balance_counts import balance_counts
 
 def get_chr_lengths(mcool_filename, experiment_resolution, chromosomes):
     """
@@ -84,7 +84,7 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, chr
         mat['bin2_id'] = mat['bin2_id'].astype(np.int32)
         balance_weights = c.bins()['weight'][:].to_numpy()
         if matrix_args.get('balance', True):
-            mat['count'] = gc_model_logp.balance_counts(mat['bin1_id'], mat['bin2_id'], mat['count'], balance_weights)
+            mat['count'] = balance_counts(mat['bin1_id'], mat['bin2_id'], mat['count'], balance_weights)
 
         mat['non_nan_mask'] = ~np.isnan(balance_weights)
         return mat
