@@ -198,6 +198,8 @@ def checkpoint_load(checkpoint_dir, iter_num):
     return params['x']
 
 def checkpoint_restore_from_dir(checkpoint_dir, x0_beginning):
+    if not checkpoint_dir:
+        return 0, x0_beginning
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
     iter_num = checkpoint_get_latest(checkpoint_dir)
