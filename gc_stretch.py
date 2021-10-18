@@ -35,7 +35,7 @@ def stretch_fit(lowres_params, ratio, target_nn_list=None):
     per_chr_lambdas = np.split(lowres_params['state_probabilities'],
                                np.cumsum(lowres_params['cis_lengths']))[:-1]
     stretched_lambdas = [ stretch_chr(l, ratio, nn) for l, nn in zip_longest(per_chr_lambdas, target_nn_list or []) ]
-    cis_lengths = [ l.shape[0] for l in stretched_lambdas ]
+    cis_lengths = tuple([ l.shape[0] for l in stretched_lambdas ])
 
     model_params = { **lowres_params,
                     'state_probabilities': np.concatenate(stretched_lambdas),

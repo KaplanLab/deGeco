@@ -9,8 +9,10 @@ import os
 from hic_analysis import preprocess, remove_unusable_bins, zeros_to_nan
 from array_utils import get_lower_triangle, normalize, nannormalize, triangle_to_symmetric, remove_main_diag
 from model_utils import log_likelihood_by, expand_by_mask, logsumexp
+from checkpoint import Checkpoint
 import loglikelihood
 import distance_decay_model
+import interruptible_lbfgsb
 
 def tap(f, debug):
     def _tap(x):
@@ -242,7 +244,7 @@ def regularization_empty(*args):
 REGULARIZATIONS = dict(l1diff=regularization_l1diff, l2diff=regularization_l2diff, nonuniform=regularization_nonuniform)
 
 def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shape='symmetric', trans_weights_shape='symmetric', lambdas_hyper=None,
-        init_values={}, fixed_values={}, optimize_options={}, R=0, regularization=None, resolution=1, debug=False):
+        init_values={}, fixed_values={}, optimize_options={}, R=0, regularization=None, resolution=1, debug=False, checkpoint_filename=None, checkpoint_restore=True):
     """
     Return the model parameters that best explain the given Hi-C interaction matrix using L-BFGS-B.
 
@@ -292,17 +294,31 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shap
     else:
         _regularization_func = REGULARIZATIONS[regularization]
 
+    cp = Checkpoint(checkpoint_filename)
+    if checkpoint_filename and checkpoint_restore:
+        try:
+            cp.restore()
+            _optimize_options['internal_state'] = cp.state
+            print("Restoring from iteration", cp.state[-1])
+        except FileNotFoundError:
+            print("Skipping restore because file does not exist")
+
     def likelihood_minimizer(variables):
+        nonlocal cp
         model_params = extract_params(variables, *model_state)
         model_interactions = log_interaction_probability(*model_params)
-        return -log_likelihood(model_interactions) + R * _regularization_func(*model_params)
+        ll = -log_likelihood(model_interactions) + R * _regularization_func(*model_params)
+        cp.objective = ll._value
+        return ll
 
     if debug:
         vg = tap(value_and_grad(likelihood_minimizer), debug)
     else:
         vg = value_and_grad(likelihood_minimizer)
-    result = sp.optimize.minimize(fun=vg, x0=x0, method='L-BFGS-B', jac=True,
-            bounds=bounds, options=_optimize_options)
+    result = sp.optimize.minimize(fun=vg, x0=x0, method=interruptible_lbfgsb.minimize, jac=True,
+            bounds=bounds, options=_optimize_options, callback=cp.save_state if checkpoint_filename else None)
+    if checkpoint_filename:
+        cp.persist(force=True)
 
     model_probabilities, cis_weights, trans_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
@@ -314,7 +330,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shap
     return sorted_probabilities, sorted_cis_weights, sorted_trans_weights, cis_dd_power, trans_dd, result
 
 def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='symmetric', trans_weights_shape='symmetric', lambdas_hyper=None,
-        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='keep', cython=True, debug=False, checkpoint_dir=None, checkpoint_restore=True, nthreads=1):
+        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='keep', cython=True, debug=False, checkpoint_filename=None, checkpoint_restore=True, nthreads=1):
     """""" # TODO: Use resolution param
     bins_i, bins_j, counts, non_nan_mask = mat_dict['bin1_id'], mat_dict['bin2_id'], mat_dict['count'], mat_dict.get('non_nan_mask')
     if non_nan_mask is None:
@@ -355,10 +371,16 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
         if z_const_idx is not None:
             z_const_idx_len = z_const_idx.shape[1]
 
-    iter_count, x0 = checkpoint_restore_from_dir(checkpoint_dir, x0)
+    cp = Checkpoint(checkpoint_filename)
+    if checkpoint_filename and checkpoint_restore:
+        try:
+            cp.restore()
+            _optimize_options['internal_state'] = cp.state
+            print("Restoring from iteration", cp.state[-1])
+        except FileNotFoundError:
+            print("Skipping restore because file does not exist")
 
     def likelihood_minimizer(variables):
-        nonlocal iter_count
         lambdas, cis_weights, trans_weights, alpha, beta, *_ = extract_params(variables, *model_state)
 
         if cython:
@@ -373,19 +395,7 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
                 z_const = None
             ll = -log_likelihood(model_interactions, z_const)
 
-        if checkpoint_dir:
-            try:
-                np.savez(f"{checkpoint_dir}/{iter_count}.npz",
-                         x=variables._value,
-                         lambdas=lambdas._value,
-                         cis_weights=cis_weights._value,
-                         trans_weights=trans_weights._value,
-                         alpha=alpha._value,
-                         beta=beta._value,
-                         ll=ll._value)
-            except Exception as e:
-                print("Can't save checkpoint:", e)
-        iter_count += 1
+        cp.objective = ll._value
 
         return ll
 
@@ -393,8 +403,8 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
         vg = tap(value_and_grad(likelihood_minimizer), debug)
     else:
         vg = value_and_grad(likelihood_minimizer)
-    result = sp.optimize.minimize(fun=vg, x0=x0, method='L-BFGS-B', jac=True, 
-            bounds=bounds, options=_optimize_options) 
+    result = sp.optimize.minimize(fun=vg, x0=x0, method=interruptible_lbfgsb.minimize, jac=True, 
+            bounds=bounds, options=_optimize_options, callback=cp.save_state if checkpoint_filename else None)
 
     model_probabilities, cis_weights, trans_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)

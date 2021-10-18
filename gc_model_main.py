@@ -73,6 +73,10 @@ def main():
     parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
     parser.add_argument('--kwargs', help='additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
     parser.add_argument('--transonly', help='transonly', dest='transonly', action='store_true', default=False)
+    parser.add_argument('--disable-checkpoint', help='Disable checkpoints (for interruptible calculation)', dest='checkpoint_disable', action='store_true')
+    parser.add_argument('--checkpoint-file', help='Customize the checkpoint file pattern', dest='checkpoint_filename', default='{output}_{iteration}.npz')
+    parser.add_argument('--checkpoint-keep', help='Keep the checkpoint file after the run has finished', dest='checkpoint_keep', action='store_true', default=False)
+    parser.add_argument('--disable-checkpoint-restore', help='Do not restore from checkpoints if they exist', dest='checkpoint_norestore', action='store_true')
     args = parser.parse_args()
     
     filename = args.filename
@@ -146,21 +150,38 @@ def main():
         if s is not None:
             print(f'** Setting random seed to {s}')
             np.random.seed(s)
+        if not args.checkpoint_disable:
+            output_file_noext = os.path.splitext(output_file)[0]
+            checkpoint_args = dict(
+                    checkpoint_filename=args.checkpoint_filename.format(output=output_file_noext, iteration=i+1),
+                    checkpoint_restore=not args.checkpoint_norestore
+            )
+            print("** Checkpointing to file:", checkpoint_args['checkpoint_filename'])
+        else:
+            checkpoint_args = dict()
         if args.sparse:
             print(f'** Sampling {args.zero_sample} zeros')
             sampled_zeros = zero_sampler.sample_zeros(args.zero_sample)
             ret = gc_model.fit_sparse(interactions_mat, z_const_idx=sampled_zeros, z_count=zero_sampler.zero_count,
-                    **fit_args, **functions_options, **kwargs)
+                    **fit_args, **functions_options, **checkpoint_args, **kwargs)
         else:
-            ret = gc_model.fit(interactions_mat(), **fit_args, **functions_options, **kwargs)
+            ret = gc_model.fit(interactions_mat(), **fit_args, **functions_options, **checkpoint_args, **kwargs)
+        if not args.checkpoint_disable:
+            if args.checkpoint_keep:
+                print("** Keeping checkpoint file")
+            else:
+                try:
+                    os.remove(checkpoint_args['checkpoint_filename'])
+                except:
+                    pass
         end_time = time.time()
+        start_time = end_time
         ret_score = ret[-1].fun
         if ret_score < best_score:
             print(f"** Changing best solution to iteration {i+1}")
             best_score = ret_score
             best_args = ret
         durations.append(end_time - start_time)
-        start_time = end_time
     assert best_args is not None
     probabilities_vector, cis_weights, trans_weights, cis_dd_power, trans_dd, optimize_result = best_args
     print(f'Time per iteration was: {durations} seconds')
