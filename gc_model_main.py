@@ -54,7 +54,7 @@ def read_functions(filename):
     return additional_kwargs
 
 def main():
-    parser = argparse.ArgumentParser(description = 'Experiment number (diferent initial random vectors)')
+    parser = argparse.ArgumentParser(description = 'Extract compartments signal from Hi-C data', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-m', help='file name', dest='filename', type=str, required=True)
     parser.add_argument('-t', help='file type', dest='type', type=str, choices=['mcool, numpy, auto'], default='auto')
     parser.add_argument('-o', help='output file name', dest='output', type=str, required=False, default='gc_out.npz')
