@@ -42,7 +42,7 @@ def read_functions(filename):
     if filename is None:
         return additional_kwargs
     functions_module = runpy.run_path(filename)
-    
+
     lambdas_hyper = functions_module.get('lambdas_hyper')
     if lambdas_hyper is not None:
         additional_kwargs['lambdas_hyper'] = lambdas_hyper
@@ -55,30 +55,30 @@ def read_functions(filename):
 
 def main():
     parser = argparse.ArgumentParser(description = 'Extract compartments signal from Hi-C data', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-m', help='file name', dest='filename', type=str, required=True)
-    parser.add_argument('-t', help='file type', dest='type', type=str, choices=['mcool, numpy, auto'], default='auto')
-    parser.add_argument('-o', help='output file name', dest='output', type=str, required=False, default='gc_out.npz')
-    parser.add_argument('-ch', help='chromosome (required for type=mcool). format: chrX[,chrY]', dest='chrom',
-            type=str, required=False)
-    parser.add_argument('-kb', help='resolution (required for type=mcool)', dest='resolution', type=int, required=False)
-    parser.add_argument('-n', help='number of states', dest='nstates', type=int, required=False, default=2)
-    parser.add_argument('-s', help='shape of weights matrix. Format shape[,trans_shape]', dest='shape', type=str, required=False, default='diag,diag')
-    parser.add_argument('-b', help='balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
-    parser.add_argument('--seed', help='set random seed. If comma separated, will be used per iteration', dest='seed', type=int, nargs='+', required=False, default=[])
-    parser.add_argument('--init', help='solution to init by', dest='init', type=str, required=False, default=None)
-    parser.add_argument('--iterations', help='number of times to run the model before choosing the best solution', dest='iterations', type=int, required=False, default=10)
-    parser.add_argument('--functions', help='Python file that includes regularization or lambdas_hyper functions', dest='functions', type=str, required=False, default=None)
+    parser.add_argument('-m', help='Input file name', dest='filename', type=str, required=True)
+    parser.add_argument('-t', help='Input file type', dest='type', type=str, choices=['mcool, numpy, auto'], default='auto')
+    parser.add_argument('-o', help='Output file name', dest='output', type=str, required=False, default='gc_out.npz')
+    parser.add_argument('-ch', help='Comma-separated list of chromosomes (required for type=mcool). format: chrN',
+            dest='chrom', type=str, required=False)
+    parser.add_argument('-kb', help='Resolution (required for type=mcool)', dest='resolution', type=int, required=False)
+    parser.add_argument('-n', help='Number of states', dest='nstates', type=int, required=False, default=2)
+    parser.add_argument('-s', help='Shape of weights matrix. Format shape[,trans_shape]', dest='shape', type=str, required=False, default='symmetric,symmetric')
+    parser.add_argument('--iterations', help='Number of times to run the model before choosing the best solution', dest='iterations', type=int, required=False, default=10)
+    parser.add_argument('--seed', help='Set random seed. If space separated, will be used per iteration', dest='seed', type=int, nargs='+', required=False, default=[])
     parser.add_argument('--sparse', help='Use sparse model', dest='sparse', action='store_true', default=False)
     parser.add_argument('--zero-sample', help='Number of zeros to sample', dest='zero_sample', type=int, default=None)
+    parser.add_argument('-b', help='Balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
+    parser.add_argument('--init', help='Solution to use as initial state', dest='init', type=str, required=False, default=None)
+    parser.add_argument('--functions', help='Python file that includes regularization or lambdas_hyper functions', dest='functions', type=str, required=False, default=None)
     parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
-    parser.add_argument('--kwargs', help='additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
-    parser.add_argument('--transonly', help='transonly', dest='transonly', action='store_true', default=False)
+    parser.add_argument('--kwargs', help='Additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
+    parser.add_argument('--transonly', help='Fit only trans regions', dest='transonly', action='store_true', default=False)
     parser.add_argument('--disable-checkpoint', help='Disable checkpoints (for interruptible calculation)', dest='checkpoint_disable', action='store_true')
     parser.add_argument('--checkpoint-file', help='Customize the checkpoint file pattern', dest='checkpoint_filename', default='{output}_{iteration}.npz')
     parser.add_argument('--checkpoint-keep', help='Keep the checkpoint file after the run has finished', dest='checkpoint_keep', action='store_true', default=False)
     parser.add_argument('--disable-checkpoint-restore', help='Do not restore from checkpoints if they exist', dest='checkpoint_norestore', action='store_true')
     args = parser.parse_args()
-    
+
     filename = args.filename
     file_type = args.type
     if file_type == 'auto':
@@ -192,6 +192,6 @@ def main():
             optimize_value=optimize_result.fun, args=vars(args), durations=durations)
     gc_datafile.save(output_file, parameters=model_params, metadata=metadata)
     print(f'Data saved into {output_file} in npz format.')
- 
+
 if __name__ == '__main__':
     main()
