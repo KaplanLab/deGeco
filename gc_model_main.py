@@ -175,13 +175,13 @@ def main():
                 except:
                     pass
         end_time = time.time()
-        start_time = end_time
         ret_score = ret[-1].fun
         if ret_score < best_score:
             print(f"** Changing best solution to iteration {i+1}")
             best_score = ret_score
             best_args = ret
         durations.append(end_time - start_time)
+        start_time = end_time
     assert best_args is not None
     probabilities_vector, cis_weights, trans_weights, cis_dd_power, trans_dd, optimize_result = best_args
     print(f'Time per iteration was: {durations} seconds')

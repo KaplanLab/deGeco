@@ -5,14 +5,20 @@ import scipy as sp
 from scipy import optimize
 import itertools
 import os
+import warnings
 
 from hic_analysis import preprocess, remove_unusable_bins, zeros_to_nan
 from array_utils import get_lower_triangle, normalize, nannormalize, triangle_to_symmetric, remove_main_diag
 from model_utils import log_likelihood_by, expand_by_mask, logsumexp
-from checkpoint import Checkpoint
 import loglikelihood
 import distance_decay_model
-import interruptible_lbfgsb
+try:
+    from checkpoint import Checkpoint
+    import interruptible_lbfgsb
+    IMPORT_CHECKPOINTS = True
+except Exception as e:
+    warnings.warn(f"Disabling checkpoints due to import error: {e}", RuntimeWarning)
+    IMPORT_CHECKPOINTS = False
 
 def tap(f, debug):
     def _tap(x):
@@ -315,10 +321,14 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shap
         vg = tap(value_and_grad(likelihood_minimizer), debug)
     else:
         vg = value_and_grad(likelihood_minimizer)
-    result = sp.optimize.minimize(fun=vg, x0=x0, method=interruptible_lbfgsb.minimize, jac=True,
-            bounds=bounds, options=_optimize_options, callback=cp.save_state if checkpoint_filename else None)
-    if checkpoint_filename:
-        cp.persist(force=True)
+    if IMPORT_CHECKPOINTS:
+        result = sp.optimize.minimize(fun=vg, x0=x0, method=interruptible_lbfgsb.minimize, jac=True,
+                bounds=bounds, options=_optimize_options, callback=cp.save_state if checkpoint_filename else None)
+        if checkpoint_filename:
+            cp.persist(force=True)
+    else:
+        result = sp.optimize.minimize(fun=vg, x0=x0, method='L-BFGS-B', jac=True,
+                bounds=bounds, options=_optimize_options)
 
     model_probabilities, cis_weights, trans_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)
@@ -403,8 +413,14 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
         vg = tap(value_and_grad(likelihood_minimizer), debug)
     else:
         vg = value_and_grad(likelihood_minimizer)
-    result = sp.optimize.minimize(fun=vg, x0=x0, method=interruptible_lbfgsb.minimize, jac=True, 
-            bounds=bounds, options=_optimize_options, callback=cp.save_state if checkpoint_filename else None)
+    if IMPORT_CHECKPOINTS:
+        result = sp.optimize.minimize(fun=vg, x0=x0, method=interruptible_lbfgsb.minimize, jac=True, 
+                bounds=bounds, options=_optimize_options, callback=cp.save_state if checkpoint_filename else None)
+        if checkpoint_filename:
+            cp.persist(force=True)
+    else:
+        result = sp.optimize.minimize(fun=vg, x0=x0, method='L-BFGS-B', jac=True, 
+                bounds=bounds, options=_optimize_options)
 
     model_probabilities, cis_weights, trans_weights, cis_dd_power, trans_dd, *_ = extract_params(result.x, *model_state)
     expanded_model_probabilities = expand_by_mask(model_probabilities, non_nan_mask)

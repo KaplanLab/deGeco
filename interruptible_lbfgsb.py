@@ -24,11 +24,11 @@
 ## Modifications by Travis Oliphant and Enthought, Inc. for inclusion in SciPy
 ## Modifications by Hagai Kariti for making the function interruptible
 
+import warnings
 import numpy as np
-from numpy import array, asarray, float64, zeros
+from numpy import array, asarray, int32, float64, zeros
 from scipy.optimize import _lbfgsb
-from scipy.optimize.optimize import (MemoizeJac, OptimizeResult,
-                       _check_unknown_options, _prepare_scalar_function)
+from scipy.optimize.optimize import (OptimizeResult, OptimizeWarning)
 from scipy.optimize._constraints import old_bound_to_new
 
 from scipy.sparse.linalg import LinearOperator
@@ -36,7 +36,25 @@ from scipy.optimize.lbfgsb import LbfgsInvHessProduct
 
 __all__ = ['minimize']
 
+def wrap_function(function, args):
+   ncalls = [0]
+   if function is None:
+       return ncalls, None
 
+   def function_wrapper(*wrapper_args):
+       ncalls[0] += 1
+       return function(*wrapper_args, *args)
+
+   return ncalls, function_wrapper
+
+def check_unknown_options(unknown_options):
+    if unknown_options:
+        msg = ", ".join(map(str, unknown_options.keys()))
+        # Stack level 4: this is called from _minimize_*, which is
+        # called from another function in SciPy. Level 4 is the first
+        # level in user code.
+        warnings.warn("Unknown solver options: %s" % msg, OptimizeWarning, 4)
+ 
 def minimize(fun, x0, args=(), jac=None, bounds=None,
              disp=None, maxcor=10, ftol=2.2204460492503131e-09,
              gtol=1e-5, eps=1e-8, maxfun=15000, maxiter=15000,
@@ -106,7 +124,7 @@ def minimize(fun, x0, args=(), jac=None, bounds=None,
     arrive at `ftol`.
 
     """
-    _check_unknown_options(unknown_options)
+    check_unknown_options(unknown_options)
     m = maxcor
     pgtol = gtol
     factr = ftol / np.finfo(float).eps
@@ -139,13 +157,20 @@ def minimize(fun, x0, args=(), jac=None, bounds=None,
         else:
             iprint = disp
 
-    sf = _prepare_scalar_function(fun, x0, jac=jac, args=args, epsilon=eps,
-                                  bounds=new_bounds,
-                                  finite_diff_rel_step=finite_diff_rel_step)
+    n_function_evals, fun = wrap_function(fun, ())
+    if jac is None:
+        raise NotImplementedError
+    else:
+        def func_and_grad(x):
+            f = fun(x, *args)
+            g = jac(x, *args)
+            return f, g
 
-    func_and_grad = sf.fun_and_grad
-
-    fortran_int = _lbfgsb.types.intvar.dtype
+    try:
+        fortran_int = _lbfgsb.types.intvar.dtype
+    except AttributeError:
+        # Older scipy versions supported only int32
+        fortran_int = int32
 
     nbd = zeros(n, fortran_int)
     low_bnd = zeros(n, float64)
@@ -205,7 +230,7 @@ def minimize(fun, x0, args=(), jac=None, bounds=None,
 
             if n_iterations >= maxiter:
                 task[:] = 'STOP: TOTAL NO. of ITERATIONS REACHED LIMIT'
-            elif sf.nfev > maxfun:
+            elif n_function_evals[0] > maxfun:
                 task[:] = ('STOP: TOTAL NO. of f AND g EVALUATIONS '
                            'EXCEEDS LIMIT')
         else:
@@ -214,7 +239,7 @@ def minimize(fun, x0, args=(), jac=None, bounds=None,
     task_str = task.tobytes().strip(b'\x00').strip()
     if task_str.startswith(b'CONV'):
         warnflag = 0
-    elif sf.nfev > maxfun or n_iterations >= maxiter:
+    elif n_function_evals[0] > maxfun or n_iterations >= maxiter:
         warnflag = 1
     else:
         warnflag = 2
@@ -232,7 +257,7 @@ def minimize(fun, x0, args=(), jac=None, bounds=None,
     hess_inv = LbfgsInvHessProduct(s[:n_corrs], y[:n_corrs])
 
     task_str = task_str.decode()
-    return OptimizeResult(fun=f, jac=g, nfev=sf.nfev,
-                          njev=sf.ngev,
+    return OptimizeResult(fun=f, jac=g, nfev=n_function_evals[0],
+                          njev=n_function_evals[0],
                           nit=n_iterations, status=warnflag, message=task_str,
                           x=x, success=(warnflag == 0), hess_inv=hess_inv)
