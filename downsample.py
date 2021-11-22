@@ -19,7 +19,7 @@ def sample_without_replacement(vec, sample_size, max_chunk=1000):
     else:
         raise TypeError("sample_size must be a float in [0, 1] or non-negative int")
     while _sample_size > 0:
-        counts = np.cumsum(vec)
+        counts = np.cumsum(_vec)
         chunk_size = np.minimum(_sample_size, max_chunk)
         choices_vec = np.random.choice(counts[-1], size=chunk_size, replace=False)
         indices = np.searchsorted(counts, choices_vec, side='right')
