@@ -96,7 +96,7 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
     if chroms == []:
         start, end = c.extent(chromosome1)
         non_nan_mask = ~np.isnan(c.bins()[start:end]['weight'].to_numpy())
-        m = c.matrix(as_pixels=True)[start:end, start:end]
+        m = c.matrix(as_pixels=True, **matrix_args)[start:end, start:end]
         m[['bin1_id', 'bin2_id']] -= start
     else:
         chroms = (chromosome1,) + chroms
@@ -115,7 +115,7 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
                 if transonly:
                     continue
 
-            df = c.matrix(as_pixels=True)[start1:end1, start2:end2]
+            df = c.matrix(as_pixels=True, **matrix_args)[start1:end1, start2:end2]
             df[['bin1_id']] += -start1 + offsets[i1]
             df[['bin2_id']] += -start2 + offsets[i2]
 
