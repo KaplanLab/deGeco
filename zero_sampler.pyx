@@ -43,6 +43,10 @@ cdef class ZeroSampler:
         self.zero_count = self.heap.remaining
         self._zero_indices = None
         
+    def seed(self, s):
+        if s is not None:
+            self.heap.seed(s)
+
     def _count_zeros(self):
         cdef int i, s, e
         cdef long[::1] rows_index = self.rows_index

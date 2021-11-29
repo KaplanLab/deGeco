@@ -6,6 +6,7 @@ import numpy as np
 
 cdef extern from "stdlib.h":
     double drand48()
+    void srand48(int)
 
 from libc.math cimport log2, ceil
 
@@ -20,6 +21,9 @@ cdef class SumHeap:
 
     def __getitem__(self, long k):
         return self.S[self.d + k]
+
+    cpdef void seed(self, int s):
+        srand48(s)
 
     cpdef void heapify(self, long[::1] w):
         "Create sumheap from weights `w` in O(n) time."

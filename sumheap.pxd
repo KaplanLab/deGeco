@@ -6,6 +6,7 @@ cdef class SumHeap:
         long n, d
         long remaining
 
+    cpdef void seed(self, int s)
     cpdef void heapify(self, long[::1] w)
     cpdef void decrease(self, long k)
     cpdef long sample(self, u=*)

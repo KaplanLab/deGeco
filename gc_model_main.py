@@ -65,6 +65,7 @@ def main():
     parser.add_argument('-s', help='Shape of weights matrix. Format shape[,trans_shape]', dest='shape', type=str, required=False, default='symmetric,symmetric')
     parser.add_argument('--iterations', help='Number of times to run the model before choosing the best solution', dest='iterations', type=int, required=False, default=10)
     parser.add_argument('--seed', help='Set random seed. If space separated, will be used per iteration', dest='seed', type=int, nargs='+', required=False, default=[])
+    parser.add_argument('--zero-sample-seed', help='Override random seed for zero sampler', dest='zero_sample_seed', type=int, nargs='+', required=False, default=None)
     parser.add_argument('--sparse', help='Use sparse model', dest='sparse', action='store_true', default=False)
     parser.add_argument('--zero-sample', help='Number of zeros to sample', dest='zero_sample', type=int, default=None)
     parser.add_argument('-b', help='Balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
@@ -117,6 +118,9 @@ def main():
         interactions_mat_unbalanced = interactions_mat
         interactions_mat = lambda: balance(interactions_mat_unbalanced())
 
+    if args.zero_sample_seed is None:
+        args.zero_sample_seed = args.seed
+
     functions_options = read_functions(args.functions)
     print(f"Passing functions {list(functions_options.keys())}")
 
@@ -145,11 +149,14 @@ def main():
             zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'], nn_mask_int, cis_lengths, 'trans')
         else:
             zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'], nn_mask_int)
-    for i, s in itertools.zip_longest(range(args.iterations), args.seed):
+    for i, s, zs in itertools.zip_longest(range(args.iterations), args.seed, args.zero_sample_seed):
         print(f"* Starting iteration number {i+1}")
         if s is not None:
             print(f'** Setting random seed to {s}')
             np.random.seed(s)
+        if zs is not None:
+            print(f'** Setting zero sampler random seed to {zs}')
+            zero_sampler.seed(zs)
         if not args.checkpoint_disable:
             output_file_noext = os.path.splitext(output_file)[0]
             checkpoint_args = dict(
