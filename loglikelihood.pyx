@@ -18,6 +18,15 @@ cdef double[:, :, :, :, ::1] grad_trans_weights
 cdef double[:, :, ::1] grad_alpha
 cdef double[:, :, ::1] grad_beta
 
+cpdef (long, long) add_gap(Py_ssize_t bincount, long i, long j, int gap) nogil:
+    cdef int after_gap, new_j, new_i
+
+    after_gap = j + gap
+    new_j = (after_gap) % bincount
+    new_i = i + (after_gap) / bincount
+
+    return new_i, new_j
+
 cpdef inline double calc_dd(long i, long j, double alpha, double beta, long[::1] chr_assoc) nogil:
    # Check cis/trans
    if chr_assoc[i] == chr_assoc[j]:
@@ -226,12 +235,12 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
     cdef double log_dd2, gc2, log_gc2, logp2
     cdef int i1, j1, i_nn1, j_nn1
     cdef int i2, j2, i_nn2, j_nn2
+    cdef int[::1] zero_gap = np.empty(total_threads)
     cdef int thread_num
     cdef logsumexp.lse log_z_obj
     cdef logsumexp.lse* log_z_obj_local
-    cdef logsumexp.lse* log_z_obj_zeros_local
-    cdef long[::1] zerocount = np.empty(total_threads)
-    cdef double[::1] zero_amplification = np.empty(total_threads)
+    cdef double zerocount = total_zero_count / zeros_step
+    cdef double log_zero_amplification = log(zerocount / total_zero_count)
     grad_reset()
     logsumexp.lse_init(&log_z_obj)
     with nogil, parallel.parallel(num_threads=total_threads):
@@ -241,7 +250,6 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
         x_sum_local[0] = x_sum_local[1] = 0
         thread_num = parallel.threadid()
         log_z_obj_local = <logsumexp.lse*>malloc(sizeof(logsumexp.lse))
-        log_z_obj_zeros_local = <logsumexp.lse*>malloc(sizeof(logsumexp.lse))
         logsumexp.lse_init(log_z_obj_local)
         for row1 in parallel.prange(bincount):
             i1 = bin1_id[row1]
@@ -270,12 +278,14 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
             reduction_res[0] += ll_local[0]
             reduction_res[1] += x_sum_local[0]
 
-        zerocount[thread_num] = 0
-        logsumexp.lse_init(log_z_obj_zeros_local)
-        for row2 in parallel.prange(zeros_start, zero_indices.shape[0], zeros_step):
-            zerocount[thread_num] += 1
-            i2 = zero_indices[0, row2]
-            j2 = zero_indices[1, row2]
+        zero_gap[thread_num] = zeros_step
+        for row2 in parallel.prange(holecount):
+            if zero_gap[thread_num] > zero_indices[row2]:
+                zero_gap[thread_num] -= zero_indices[row2]
+                continue
+            i2 = zero_indices[row2]
+            j2 = zero_indices[row2]
+            i2, j2 = add_gap(bincount, i2, j2, zero_gap[thread_num])
             i_nn2 = non_nan_map[i2]
             j_nn2 = non_nan_map[j2]
             if i2 == j2 or i_nn2 < 0 or j_nn2 < 0:
@@ -289,11 +299,9 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
                 grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, trans_weights, cis=False)
             log_gc2 = log(gc2)
             logp2 = log_dd2 + log_gc2
-            logsumexp.lse_update(log_z_obj_zeros_local, logp2)
+            logsumexp.lse_update(log_z_obj_local, logp2 + log_zero_amplification)
 
             grad_update_dd(thread_num, i2, j2, exp(logp2), x2, chr_assoc)
-        zero_amplification[thread_num] = zerocount[thread_num] / total_zero_count
-        logsumexp.lse_update(log_z_obj_local, zero_amplification[thread_num] * logsumexp.lse_result(log_z_obj_zeros_local))
         with gil:
             PyErr_CheckSignals()
             log_z_local = logsumexp.lse_result(log_z_obj_local)
