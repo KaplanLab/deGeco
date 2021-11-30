@@ -17,7 +17,7 @@ cdef class ZeroSampler:
         self.holes = np.empty(bin1_id.shape[0]+1, dtype=np.int32)
         
     def _gap_size(self, r1, c1, r2, c2):
-        cdef int num_full_rows, partial_row1, partial_row2
+        cdef int partial_row1, partial_row2
         
         assert r1 <= r2 or c1 <= c2
         if r1 == r2:
@@ -25,11 +25,12 @@ cdef class ZeroSampler:
                 return 0
             return c2 - c1 - 1
 
-        num_full_rows = r2 - r1 - 1
+        # Full rows aren't really full - we only need the upper triangle
+        full_rows = np.sum([ self.nbins - i for i in range(r1+1, r2)])
         partial_row1 = self.nbins - c1 - 1
-        partial_row2 = c2
+        partial_row2 = c2 - r2
 
-        return num_full_rows * self.nbins + partial_row1 + partial_row2
+        return full_rows + partial_row1 + partial_row2
 
     def sample_zeros(self, n):
         cdef:
@@ -44,6 +45,6 @@ cdef class ZeroSampler:
             prev_x = cur_x
             prev_y = cur_y
         i = self._bin1_id.shape[0]
-        self.holes[i] = self._gap_size(prev_x, prev_y, self.nbins-1, self.nbins-1)
+        self.holes[i] = self._gap_size(prev_x, prev_y, self.nbins-1, self.nbins)
 
         return np.asarray(self.holes)
