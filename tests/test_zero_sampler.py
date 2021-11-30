@@ -11,7 +11,7 @@ def test_correct_gaps():
     #non_nan_mask = np.ones(bin1_id.size, dtype=np.int8)
     z = zero_sampler.ZeroSampler(nbins, bin1_id, bin2_id)
 
-    reference_holes = [0, 1, 4, 0, 1]
+    reference_holes = [0, 1, 3, 0, 0]
     holes = z.sample_zeros(4)
     
     assert np.all(holes == reference_holes)
