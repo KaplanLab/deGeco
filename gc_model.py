@@ -340,7 +340,7 @@ def fit(interactions_mat, cis_lengths=None, number_of_states=2, cis_weights_shap
     return sorted_probabilities, sorted_cis_weights, sorted_trans_weights, cis_dd_power, trans_dd, result
 
 def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='symmetric', trans_weights_shape='symmetric', lambdas_hyper=None,
-        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='keep', cython=True, debug=False, checkpoint_filename=None, checkpoint_restore=True, nthreads=1):
+        init_values={}, fixed_values={}, optimize_options={}, resolution=None, z_const_idx=None, z_count=0, dups='keep', cython=True, debug=False, checkpoint_filename=None, checkpoint_restore=True, nthreads=1, zeros_step=1):
     """""" # TODO: Use resolution param
     bins_i, bins_j, counts, non_nan_mask = mat_dict['bin1_id'], mat_dict['bin2_id'], mat_dict['count'], mat_dict.get('non_nan_mask')
     if non_nan_mask is None:
@@ -348,6 +348,11 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
     non_nan_map = np.cumsum(non_nan_mask, dtype=int) - 1
     non_nan_map[~non_nan_mask] = -1
     chr_assoc = np.repeat(np.arange(np.size(cis_lengths)) , cis_lengths)
+    zeros_start = 0
+
+    def increment_nz_start():
+        nonlocal zeros_start
+        zeros_start = (zeros_start + 1) % zeros_step
 
     lambdas_hyperparams = lambdas_get_hyperparams(non_nan_mask, number_of_states, lambdas_hyper)
     cis_weights_hyperparams = weights_get_hyperparams(cis_weights_shape, number_of_states)
@@ -395,7 +400,7 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
 
         if cython:
             ll = -loglikelihood.calc_likelihood(lambdas, cis_weights, trans_weights, alpha, beta, bins_i, bins_j, counts,
-                    z_const_idx, z_count, chr_assoc, non_nan_map)
+                    z_const_idx, z_count, chr_assoc, non_nan_map, zeros_start=zeros_start, zeros_step=zeros_step)
         else:
             model_interactions = calc_logp(lambdas, cis_weights, trans_weights, alpha, beta, bins_i, bins_j, chr_assoc, non_nan_map)
             if z_const_idx is not None:

@@ -180,31 +180,31 @@ cdef void grad_finalize(double x_sum, double log_z, int total_threads):
                     grad_trans_weights[0, i, j, 0, 0] += part1_part2_diff
 
 def calc_likelihood_grad_lambdas(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map, zeros_start=0, zeros_step=1):
     def _vjp(g):
         return g * np.asarray(grad_lambdas[0, :, :, 0, 0])
     return _vjp
 
 def calc_likelihood_grad_cis_weights(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map, zeros_start=0, zeros_step=1):
     def _vjp(g):
         return g * np.asarray(grad_cis_weights[0, :, :, 0, 0])
     return _vjp
 
 def calc_likelihood_grad_trans_weights(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map, zeros_start=0, zeros_step=1):
     def _vjp(g):
         return g * np.asarray(grad_trans_weights[0, :, :, 0, 0])
     return _vjp
 
 def calc_likelihood_grad_alpha(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map, zeros_start=0, zeros_step=1):
     def _vjp(g):
         return g * grad_alpha[0, 0, 0]
     return _vjp
     
 def calc_likelihood_grad_beta(ans_py, lambdas not None, cis_weights not None, trans_weights not None,
-        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map):
+        alpha, beta, bin1_id, bin2_id, count, zero_indices, total_zero_count, chr_assoc, non_nan_map, zeros_start=0, zeros_step=1):
     def _vjp(g):
         return g * grad_beta[0, 0, 0]
     return _vjp
@@ -213,7 +213,7 @@ def calc_likelihood_grad_beta(ans_py, lambdas not None, cis_weights not None, tr
 def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights not None,
         double[:, ::1] trans_weights not None, double alpha, double beta, int[::1] bin1_id, int[::1] bin2_id,
         double[::1] count, int [::1] zero_indices, long total_zero_count, long[::1] chr_assoc,
-        long[::1] non_nan_map):
+        long[::1] non_nan_map, int zeros_start=0, int zeros_step=1):
     cdef Py_ssize_t bincount = bin1_id.shape[0]
     cdef Py_ssize_t holecount = zero_indices.shape[0]
     cdef Py_ssize_t row1, row2
@@ -272,7 +272,7 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
 
         zerocount[thread_num] = 0
         logsumexp.lse_init(log_z_obj_zeros_local)
-        for row2 in parallel.prange(zero_indices.shape[0]):
+        for row2 in parallel.prange(zeros_start, zero_indices.shape[0], zeros_step):
             zerocount[thread_num] += 1
             i2 = zero_indices[0, row2]
             j2 = zero_indices[1, row2]
