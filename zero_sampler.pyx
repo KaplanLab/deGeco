@@ -25,10 +25,10 @@ cdef class ZeroSampler:
                 return 0
             return c2 - c1 - 1
 
-        # Full rows aren't really full - we only need the upper triangle, not including the diagonal
-        full_rows = np.sum([ self.nbins - i - 1 for i in range(r1+1, r2)])
+        # Full rows aren't really full - we only need the upper triangle
+        full_rows = np.sum([ self.nbins - i for i in range(r1+1, r2)])
         partial_row1 = self.nbins - c1 - 1
-        partial_row2 = np.maximum(c2 - r2 - 1, 0)
+        partial_row2 = c2 - r2
 
         return full_rows + partial_row1 + partial_row2
 
