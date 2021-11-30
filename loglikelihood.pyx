@@ -19,11 +19,13 @@ cdef double[:, :, ::1] grad_alpha
 cdef double[:, :, ::1] grad_beta
 
 cpdef (long, long) add_gap(Py_ssize_t bincount, long i, long j, int gap) nogil:
-    cdef int after_gap, new_j, new_i
+    cdef int new_j, new_i
 
-    after_gap = j + gap
-    new_j = (after_gap) % bincount
-    new_i = i + (after_gap) / bincount
+    new_j = j + gap
+    new_i = i
+    while new_j >= bincount:
+        new_i += 1
+        new_j = new_j - bincount + new_i
 
     return new_i, new_j
 
@@ -235,12 +237,12 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
     cdef double log_dd2, gc2, log_gc2, logp2
     cdef int i1, j1, i_nn1, j_nn1
     cdef int i2, j2, i_nn2, j_nn2
-    cdef int[::1] zero_gap = np.empty(total_threads)
+    cdef int[::1] zero_gap = np.empty(total_threads, dtype=np.int32)
     cdef int thread_num
     cdef logsumexp.lse log_z_obj
     cdef logsumexp.lse* log_z_obj_local
     cdef double zerocount = total_zero_count / zeros_step
-    cdef double log_zero_amplification = log(zerocount / total_zero_count)
+    cdef double log_zero_amplification = log(total_zero_count / zerocount)
     grad_reset()
     logsumexp.lse_init(&log_z_obj)
     with nogil, parallel.parallel(num_threads=total_threads):
@@ -278,14 +280,19 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
             reduction_res[0] += ll_local[0]
             reduction_res[1] += x_sum_local[0]
 
-        zero_gap[thread_num] = zeros_step
+        zero_gap[thread_num] = zeros_step - zeros_start
         for row2 in parallel.prange(holecount):
             if zero_gap[thread_num] > zero_indices[row2]:
                 zero_gap[thread_num] -= zero_indices[row2]
                 continue
-            i2 = zero_indices[row2]
-            j2 = zero_indices[row2]
-            i2, j2 = add_gap(bincount, i2, j2, zero_gap[thread_num])
+            if row2 == 0:
+                i2 = 0
+                j2 = -1
+            else:
+                i2 = bin1_id[row2-1]
+                j2 = bin2_id[row2-1]
+            i2, j2 = add_gap(non_nan_map.shape[0], i2, j2, zero_gap[thread_num])
+            zero_gap[thread_num] = zeros_step
             i_nn2 = non_nan_map[i2]
             j_nn2 = non_nan_map[j2]
             if i2 == j2 or i_nn2 < 0 or j_nn2 < 0:

@@ -21,6 +21,7 @@ import gc_model
 import loglikelihood
 from array_utils import triangle_to_symmetric, get_lower_triangle
 from model_utils import log_likelihood_by
+from zero_sampler import ZeroSampler
 from utils import almost_equal
 
 @pytest.fixture()
@@ -57,13 +58,11 @@ def sparse_data(nbins, non_nan_mask, counts_mat):
     return dict(count=count, bin1_id=bin1_id, bin2_id=bin2_id)
 
 @pytest.fixture()
-def zeros_data(nbins, counts_mat):
-    upper_tri_mask = ~np.tri(nbins, dtype=bool)
-    indices = np.ascontiguousarray(np.nonzero((counts_mat == 0) & upper_tri_mask), dtype=np.int32)
-    if indices.size == 0:
-        return dict(count=0, indices=None)
+def zeros_data(nbins, sparse_data):
+    z = ZeroSampler(nbins, sparse_data['bin1_id'], sparse_data['bin2_id'])
+    holes = z.sample_zeros(1)
 
-    return dict(count=indices.shape[1], indices=indices)
+    return dict(count=np.sum(holes), indices=holes)
 
 @pytest.fixture()
 def ref_ll_func(counts_mat, cis_lengths, non_nan_mask):
