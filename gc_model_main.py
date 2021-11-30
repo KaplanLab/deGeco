@@ -144,19 +144,15 @@ def main():
     start_time = time.time()
     if args.sparse:
         nbins = interactions_mat['non_nan_mask'].shape[0]
-        nn_mask_int = interactions_mat['non_nan_mask'].astype('int8') # Workaround Cython not working with bool arrays
         if args.transonly:
-            zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'], nn_mask_int, cis_lengths, 'trans')
+            zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'])
         else:
-            zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'], nn_mask_int)
+            zero_sampler = ZeroSampler(nbins, interactions_mat['bin1_id'], interactions_mat['bin2_id'])
     for i, s, zs in itertools.zip_longest(range(args.iterations), args.seed, args.zero_sample_seed):
         print(f"* Starting iteration number {i+1}")
         if s is not None:
             print(f'** Setting random seed to {s}')
             np.random.seed(s)
-        if zs is not None:
-            print(f'** Setting zero sampler random seed to {zs}')
-            zero_sampler.seed(zs)
         if not args.checkpoint_disable:
             output_file_noext = os.path.splitext(output_file)[0]
             checkpoint_args = dict(
@@ -169,7 +165,8 @@ def main():
         if args.sparse:
             print(f'** Sampling {args.zero_sample} zeros')
             sampled_zeros = zero_sampler.sample_zeros(args.zero_sample)
-            ret = gc_model.fit_sparse(interactions_mat, z_const_idx=sampled_zeros, z_count=zero_sampler.zero_count,
+            zero_count = np.sum(sampled_zeros)
+            ret = gc_model.fit_sparse(interactions_mat, z_const_idx=sampled_zeros, z_count=zero_count,
                     **fit_args, **functions_options, **checkpoint_args, **kwargs)
         else:
             ret = gc_model.fit(interactions_mat(), **fit_args, **functions_options, **checkpoint_args, **kwargs)
