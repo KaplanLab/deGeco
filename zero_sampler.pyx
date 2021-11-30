@@ -36,7 +36,7 @@ cdef class ZeroSampler:
         cdef:
             long i
             int cur_x, cur_y
-            int prev_x=0, prev_y=0
+            int prev_x=0, prev_y=-1
 
         for i in range(self._bin1_id.shape[0]):
             cur_x = self._bin1_id[i]
