@@ -11,7 +11,7 @@ def test_correct_gaps1():
     #non_nan_mask = np.ones(bin1_id.size, dtype=np.int8)
     z = zero_sampler.ZeroSampler(nbins, bin1_id, bin2_id)
 
-    reference_holes = [0, 1, 4, 0, 1]
+    reference_holes = np.cumsum([0, 1, 4, 0, 1])
     holes = z.sample_zeros(4)
     
     assert np.all(holes == reference_holes)
@@ -23,7 +23,7 @@ def test_correct_gaps_before_first_pixel():
     #non_nan_mask = np.ones(bin1_id.size, dtype=np.int8)
     z = zero_sampler.ZeroSampler(nbins, bin1_id, bin2_id)
 
-    reference_holes = [1, 0, 4, 0, 1]
+    reference_holes = np.cumsum([1, 0, 4, 0, 1])
     holes = z.sample_zeros(4)
     
     assert np.all(holes == reference_holes)
