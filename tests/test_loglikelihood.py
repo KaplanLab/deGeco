@@ -62,7 +62,7 @@ def zeros_data(nbins, sparse_data):
     z = ZeroSampler(nbins, sparse_data['bin1_id'], sparse_data['bin2_id'])
     holes = z.sample_zeros(1)
 
-    return dict(count=np.sum(holes), indices=holes)
+    return dict(count=(holes[-1]), indices=holes)
 
 @pytest.fixture()
 def ref_ll_func(counts_mat, cis_lengths, non_nan_mask):

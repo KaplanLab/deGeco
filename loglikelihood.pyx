@@ -7,6 +7,7 @@ from autograd.extend import primitive, defvjp
 cimport logsumexp
 from ssum cimport fsum_step
 from libc.stdlib cimport malloc, free
+cimport gap_sampler
 import multiprocessing
 
 cdef int total_threads
@@ -223,10 +224,9 @@ def calc_likelihood_grad_beta(ans_py, lambdas not None, cis_weights not None, tr
 @primitive
 def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights not None,
         double[:, ::1] trans_weights not None, double alpha, double beta, int[::1] bin1_id, int[::1] bin2_id,
-        double[::1] count, int [::1] zero_indices, long total_zero_count, long[::1] chr_assoc,
+        double[::1] count, long [::1] zero_indices, long total_zero_count, long[::1] chr_assoc,
         long[::1] non_nan_map, int zeros_start=0, int zeros_step=1):
     cdef Py_ssize_t bincount = bin1_id.shape[0]
-    cdef Py_ssize_t holecount = zero_indices.shape[0]
     cdef Py_ssize_t row1, row2
     cdef double log_z, log_z_local, x1, x2=0
     cdef double loglikelihood_part1 = 0, x_sum = 0
@@ -237,12 +237,14 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
     cdef double log_dd2, gc2, log_gc2, logp2
     cdef int i1, j1, i_nn1, j_nn1
     cdef int i2, j2, i_nn2, j_nn2
-    cdef int[::1] zero_gap = np.empty(total_threads, dtype=np.int32)
     cdef int thread_num
     cdef logsumexp.lse log_z_obj
     cdef logsumexp.lse* log_z_obj_local
     cdef double zerocount = total_zero_count / zeros_step
     cdef double log_zero_amplification = log(total_zero_count / zerocount)
+    cdef long[::1] pos = np.zeros(total_threads, dtype=int)
+    cdef int i_gap, row, col
+    cdef long nbins = non_nan_map.shape[0]
     grad_reset()
     logsumexp.lse_init(&log_z_obj)
     with nogil, parallel.parallel(num_threads=total_threads):
@@ -280,19 +282,12 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
             reduction_res[0] += ll_local[0]
             reduction_res[1] += x_sum_local[0]
 
-        zero_gap[thread_num] = zeros_step - zeros_start
-        for row2 in parallel.prange(holecount):
-            if zero_gap[thread_num] > zero_indices[row2]:
-                zero_gap[thread_num] -= zero_indices[row2]
-                continue
-            if row2 == 0:
-                i2 = 0
-                j2 = -1
-            else:
-                i2 = bin1_id[row2-1]
-                j2 = bin2_id[row2-1]
-            i2, j2 = add_gap(non_nan_map.shape[0], i2, j2, zero_gap[thread_num])
-            zero_gap[thread_num] = zeros_step
+        pos[thread_num] = 0
+        for row2 in parallel.prange(zeros_start, total_zero_count, zeros_step):
+            pos[thread_num] = gap_sampler.get_position(row2, zero_indices, pos[thread_num])
+            i_gap = gap_sampler.get_gap(zero_indices, pos[thread_num], row2)
+            row, col = gap_sampler.pos2rowcol(pos[thread_num], bin1_id, bin2_id)
+            i2, j2 = gap_sampler.move_right(nbins, row, col, i_gap)
             i_nn2 = non_nan_map[i2]
             j_nn2 = non_nan_map[j2]
             if i2 == j2 or i_nn2 < 0 or j_nn2 < 0:
