@@ -1,4 +1,4 @@
-# cython: language_level=3, boundscheck=False, wraparound=False, cdivision=True
+# cython: language_level=3, boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True
 from cpython.exc cimport PyErr_CheckSignals
 from libc.math cimport log, exp, isfinite
 import numpy as np
