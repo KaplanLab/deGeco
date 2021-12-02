@@ -2,12 +2,12 @@
 cimport cython
 import numpy as np
 
-cdef int get_position(int p, long[::1] gaps_cumsum, long gaps_pos) nogil:
+cdef long get_position(long p, long[::1] gaps_cumsum, long gaps_pos) nogil:
     while p >= gaps_cumsum[gaps_pos]:
         gaps_pos += 1
     return gaps_pos
 
-cdef int get_gap(long[::1] gaps_cumsum, long p, int i) nogil:
+cdef int get_gap(long[::1] gaps_cumsum, long p, long i) nogil:
     if p == 0:
         return i + 1
     return i - gaps_cumsum[p-1] + 1
