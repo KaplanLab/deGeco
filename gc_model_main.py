@@ -165,7 +165,7 @@ def main():
         if args.sparse:
             print(f'** Sampling {args.zero_sample} zeros')
             sampled_zeros = zero_sampler.sample_zeros(args.zero_sample)
-            zero_count = np.sum(sampled_zeros)
+            zero_count = sampled_zeros[-1]
             ret = gc_model.fit_sparse(interactions_mat, z_const_idx=sampled_zeros, z_count=zero_count,
                     **fit_args, **functions_options, **checkpoint_args, **kwargs)
         else:
