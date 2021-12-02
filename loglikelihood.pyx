@@ -301,7 +301,7 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
                 grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, trans_weights, cis=False)
             log_gc2 = log(gc2)
             logp2 = log_dd2 + log_gc2
-            logsumexp.lse_update(log_z_obj_local, logp2 + log_zero_amplification)
+            logsumexp.lse_update(log_z_obj_local, logp2)
 
             grad_update_dd(thread_num, i2, j2, exp(logp2), x2, chr_assoc)
         with gil:
