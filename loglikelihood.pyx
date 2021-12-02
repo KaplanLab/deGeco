@@ -279,7 +279,7 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
             log_dd2 = calc_dd(i2, j2, alpha, beta, chr_assoc)
             if chr_assoc[i2] == chr_assoc[j2]:
                 gc2 = calc_gc(i_nn2, j_nn2, lambdas, cis_weights)
-                grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, cis_weights, cis=True)
+                grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, cis_weights, cis=True, amplification=zero_amplification)
             else:
                 gc2 = calc_gc(i_nn2, j_nn2, lambdas, trans_weights)
                 grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, trans_weights, cis=False, amplification=zero_amplification)
