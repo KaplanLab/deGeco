@@ -418,9 +418,16 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
         vg = tap(value_and_grad(likelihood_minimizer), debug)
     else:
         vg = value_and_grad(likelihood_minimizer)
+    if checkpoint_filename:
+        def callback(*args):
+            increment_nz_start()
+            return cp.save_state(*args)
+    else:
+        def callback(*args):
+            increment_nz_start()
     if IMPORT_CHECKPOINTS:
         result = sp.optimize.minimize(fun=vg, x0=x0, method=interruptible_lbfgsb.minimize, jac=True, 
-                bounds=bounds, options=_optimize_options, callback=cp.save_state if checkpoint_filename else None)
+                bounds=bounds, options=_optimize_options, callback=callback)
         if checkpoint_filename:
             cp.persist(force=True)
     else:
