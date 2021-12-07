@@ -1,6 +1,6 @@
 # cython: language_level=3, boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True
 from cpython.exc cimport PyErr_CheckSignals
-from libc.math cimport log, exp, isfinite
+from libc.math cimport log, exp, isfinite, sqrt
 import numpy as np
 from cython import parallel
 from autograd.extend import primitive, defvjp
@@ -243,8 +243,11 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
     cdef double zerocount = total_zero_count / zeros_step
     cdef double log_zero_amplification = log(total_zero_count / zerocount)
     cdef long[::1] pos = np.zeros(total_threads, dtype=int)
+    cdef long nonzero_p, npixel
+    cdef double temp
     cdef int i_gap, row, col
     cdef long nbins = non_nan_map.shape[0]
+    cdef long[::1] temp2 = np.zeros(total_threads, dtype=int)
     grad_reset()
     logsumexp.lse_init(&log_z_obj)
     with nogil, parallel.parallel(num_threads=total_threads):
@@ -284,10 +287,33 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
 
         pos[thread_num] = 0
         for row2 in parallel.prange(zeros_start, total_zero_count, zeros_step):
-            pos[thread_num] = gap_sampler.get_position(row2, zero_indices, pos[thread_num])
-            i_gap = gap_sampler.get_gap(zero_indices, pos[thread_num], row2)
-            row, col = gap_sampler.pos2rowcol(pos[thread_num], bin1_id, bin2_id)
-            i2, j2 = gap_sampler.move_right(nbins, row, col, i_gap)
+            while row2 >= zero_indices[pos[thread_num]]:
+                pos[thread_num] = pos[thread_num] + 1
+            #pos[thread_num] = gap_sampler.get_position(row2, zero_indices, pos[thread_num])
+            npixel = row2 + pos[thread_num]
+            temp = 2*nbins + 1
+            i2 = <int>((temp - sqrt(temp**2 - 8*nbins))/2)
+            j2 = i2 + <int>(nbins - (temp - i2)*i2/2) 
+            #i2 = <int>((sqrt(1+8*npixel)-1)/2)
+            #j2 = <int>(npixel - i2*(i2+1)/2)
+            #if pos[thread_num] == 0:
+            #    i_gap = row2 + 1
+            #    row, col = 0, -1
+            #else:
+            #    nonzero_p = pos[thread_num] - 1
+            #    i_gap = row2 - zero_indices[nonzero_p] + 1
+            #    row, col = bin1_id[nonzero_p], bin2_id[nonzero_p]
+
+            #i_gap = gap_sampler.get_gap(zero_indices, pos[thread_num], row2)
+            #row, col = gap_sampler.pos2rowcol(pos[thread_num], bin1_id, bin2_id)
+            #j2 = col + i_gap
+            #i2 = row
+            #while j2 >= nbins:
+            #    i2 = i2 + 1
+            #    j2 = j2 - nbins + i2
+
+            #i2, j2 = gap_sampler.move_right(nbins, row, col, i_gap)
+            #i2, j2 = 0, 1
             i_nn2 = non_nan_map[i2]
             j_nn2 = non_nan_map[j2]
             if i2 == j2 or i_nn2 < 0 or j_nn2 < 0:
@@ -309,6 +335,7 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
             log_z_local = logsumexp.lse_result(log_z_obj_local)
             if isfinite(log_z_local):
                 logsumexp.lse_update(&log_z_obj, log_z_local)
+            #print(temp2[thread_num])
         free(ll_local)
         free(x_sum_local)
         free(log_z_obj_local)
