@@ -292,10 +292,8 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
             #pos[thread_num] = gap_sampler.get_position(row2, zero_indices, pos[thread_num])
             npixel = row2 + pos[thread_num]
             temp = 2*nbins + 1
-            i2 = <int>((temp - sqrt(temp**2 - 8*nbins))/2)
-            j2 = i2 + <int>(nbins - (temp - i2)*i2/2) 
-            #i2 = <int>((sqrt(1+8*npixel)-1)/2)
-            #j2 = <int>(npixel - i2*(i2+1)/2)
+            i2 = <int>((temp - sqrt(temp**2 - 8*npixel))/2)
+            j2 = i2 + <int>(npixel - (temp - i2)*i2/2) 
             #if pos[thread_num] == 0:
             #    i_gap = row2 + 1
             #    row, col = 0, -1
