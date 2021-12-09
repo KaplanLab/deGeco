@@ -242,6 +242,7 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
     cdef logsumexp.lse* log_z_obj_local
     cdef double zerocount = total_zero_count / zeros_step
     cdef double log_zero_amplification = log(total_zero_count / zerocount)
+    cdef double zero_amplification = zeros_step
     cdef long[::1] pos = np.zeros(total_threads, dtype=int)
     cdef long nonzero_p, npixel
     cdef double temp
@@ -319,15 +320,15 @@ def calc_likelihood(double[:, ::1] lambdas not None, double[:, ::1] cis_weights 
             log_dd2 = calc_dd(i2, j2, alpha, beta, chr_assoc)
             if chr_assoc[i2] == chr_assoc[j2]:
                 gc2 = calc_gc(i_nn2, j_nn2, lambdas, cis_weights)
-                grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, cis_weights, cis=True)
+                grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, cis_weights, cis=True, amplification=zero_amplification)
             else:
                 gc2 = calc_gc(i_nn2, j_nn2, lambdas, trans_weights)
-                grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, trans_weights, cis=False)
+                grad_update_gc(thread_num, i_nn2, j_nn2, gc2, exp(log_dd2), x2, lambdas, trans_weights, cis=False, amplification=zero_amplification)
             log_gc2 = log(gc2)
             logp2 = log_dd2 + log_gc2
-            logsumexp.lse_update(log_z_obj_local, logp2)
+            logsumexp.lse_update(log_z_obj_local, logp2 + log_zero_amplification)
 
-            grad_update_dd(thread_num, i2, j2, exp(logp2), x2, chr_assoc)
+            grad_update_dd(thread_num, i2, j2, exp(logp2), x2, chr_assoc, zero_amplification)
         with gil:
             PyErr_CheckSignals()
             log_z_local = logsumexp.lse_result(log_z_obj_local)
