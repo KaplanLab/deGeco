@@ -420,7 +420,7 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
         vg = value_and_grad(likelihood_minimizer)
     if checkpoint_filename:
         def callback(*args):
-            increment_nz_start()
+            #increment_nz_start()
             return cp.save_state(*args)
     else:
         def callback(*args):
