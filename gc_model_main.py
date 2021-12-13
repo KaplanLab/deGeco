@@ -154,7 +154,7 @@ def main():
         if s is not None:
             print(f'** Setting random seed to {s}')
             np.random.seed(s)
-        if zs is not None:
+        if args.sparse and zs is not None:
             print(f'** Setting zero sampler random seed to {zs}')
             zero_sampler.seed(zs)
         if not args.checkpoint_disable:
