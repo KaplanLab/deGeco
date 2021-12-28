@@ -78,6 +78,7 @@ def main():
     parser.add_argument('--checkpoint-file', help='Customize the checkpoint file pattern', dest='checkpoint_filename', default='{output}_{iteration}.npz')
     parser.add_argument('--checkpoint-keep', help='Keep the checkpoint file after the run has finished', dest='checkpoint_keep', action='store_true', default=False)
     parser.add_argument('--disable-checkpoint-restore', help='Do not restore from checkpoints if they exist', dest='checkpoint_norestore', action='store_true')
+    parser.add_argument('--no-overwrite', help='Quit if output file already exists', dest='no_overwrite', action='store_true')
     args = parser.parse_args()
 
     filename = args.filename
@@ -90,7 +91,13 @@ def main():
     if args.sparse and args.zero_sample is None:
         print("--zero-sample must be specified when using sparse model")
         sys.exit(1)
-    output_file = args.output
+    if not args.output.endswith('.npz'):
+        output_file = args.output + '.npz'
+    else:
+        output_file = args.output
+    if os.path.exists(output_file) and args.no_overwrite:
+        print(f"{output_file}: File exists and --no-overwrite was passed, quitting")
+        return
     nstates = args.nstates
     if ',' in args.shape:
         cis_shape, trans_shape = args.shape.split(',')
