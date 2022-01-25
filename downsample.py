@@ -29,7 +29,7 @@ def sample_without_replacement(vec, sample_size, max_chunk=1000):
         _sample_size -= chunk_size
     return sampled
 
-def downsample_matrix(hic_mat, samples, nans):
+def downsample_matrix(hic_mat, samples):
     print("Sampling")
     downsampled_lower_tri = sample_without_replacement(array_utils.get_lower_triangle(hic_mat), samples, max_chunk=10000000)
     print("To symm")
@@ -55,7 +55,7 @@ def main():
     print(f"Reading matrix for chr {args.chromosome} at resolution {args.resolution} from {args.filename}")
     unbalanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=False)
     print(f"Downsampling to {args.samples} of samples")
-    downsampled = downsample_matrix(unbalanced, args.samples, nans)
+    downsampled = downsample_matrix(unbalanced, args.samples)
     if args.balance == "yes":
         filter_cutoff = 10
         print(f"Filtering rows with marginals below {filter_cutoff}")
