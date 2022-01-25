@@ -34,13 +34,7 @@ def downsample_matrix(hic_mat, samples, nans):
     downsampled_lower_tri = sample_without_replacement(array_utils.get_lower_triangle(hic_mat), samples, max_chunk=10000000)
     print("To symm")
     downsampled_mat = array_utils.triangle_to_symmetric(hic_mat.shape[0], downsampled_lower_tri, k=-1, fast=True)
-    if nans is not None:
-        print(f"Setting NaN rows")
-        downsampled_mat[nans, :] = downsampled_mat[:, nans] = np.nan
-    print("Balancing")
-    balanced_mat = array_utils.balance(downsampled_mat, ignorezeros=True)
-    
-    return balanced_mat
+    return downsampled_mat
 
 def main():
     parser = argparse.ArgumentParser(description = 'Experiment number (diferent initial random vectors)')
@@ -50,6 +44,7 @@ def main():
     parser.add_argument('-o', help='output file name', dest='output', type=str, required=True)
     parser.add_argument('-s', help='samples', dest='samples', type=float, required=True)
     parser.add_argument('--seed', help='set random seed', dest='seed', type=int, required=False, default=None)
+    parser.add_argument('--balance', help='balance type', dest='balance', type=str, choices=['yes', 'no'], default='yes')
     args = parser.parse_args()
 
     if args.seed is not None:
@@ -59,14 +54,25 @@ def main():
     start = time.time()
     print(f"Reading matrix for chr {args.chromosome} at resolution {args.resolution} from {args.filename}")
     unbalanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=False)
-    print(f"Reading NaN locations")
-    balanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=True)
-    nans = np.isnan(balanced).all(axis=1)
-    del balanced
     print(f"Downsampling to {args.samples} of samples")
     downsampled = downsample_matrix(unbalanced, args.samples, nans)
+    if args.balance == "yes":
+        filter_cutoff = 10
+        print(f"Filtering rows with marginals below {filter_cutoff}")
+        nans = downsampled.sum(axis=1) < filter_cutoff
+        downsampled[nans, :] = downsampled[:, nans] = np.nan
+        print("Balancing")
+        downsampled = array_utils.balance(downsampled, ignorezeros=True)
+    
     print(f'Saving into {args.output}')
-    np.save(args.output, downsampled)
+    if args.output.endswith('.cool'):
+        loader = hic.cooler.create.ArrayLoader(range(downsampled.shape[0]), downsampled, 100000)
+        bins = hic.cooler.Cooler(f"{args.filename}::resolutions/{args.resolution}").bins()
+        if args.chromosome != 'all':
+            bins = bins.fetch(args.chromosome)
+        hic.cooler.create_cooler(args.output, bins, loader)
+    else:
+        np.save(args.output, downsampled)
     end = time.time()
     elapsed = end - start
     print(f'Done. Took: {elapsed}s')
