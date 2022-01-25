@@ -53,7 +53,7 @@ def main():
 
     start = time.time()
     print(f"Reading matrix for chr {args.chromosome} at resolution {args.resolution} from {args.filename}")
-    unbalanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=False)
+    unbalanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=False).astype(int)
     print(f"Downsampling to {args.samples} of samples")
     downsampled = downsample_matrix(unbalanced, args.samples)
     if args.balance == "yes":
