@@ -50,7 +50,7 @@ def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome1,
     if chromosome1 == 'all':
         return mat[:, :]
 
-    if chroms == []:
+    if len(chroms) == 0:
         slice_cis1 = slice(*c.extent(chromosome1))
         cis_interactions1 = mat[slice_cis1, slice_cis1]
         return cis_interactions1
@@ -93,7 +93,7 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
         mat['non_nan_mask'] = ~np.isnan(balance_weights)
         return mat
 
-    if chroms == []:
+    if len(chroms) == 0:
         start, end = c.extent(chromosome1)
         non_nan_mask = ~np.isnan(c.bins()[start:end]['weight'].to_numpy())
         m = c.matrix(as_pixels=True, **matrix_args)[start:end, start:end]
