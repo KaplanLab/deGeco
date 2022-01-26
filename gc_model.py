@@ -360,6 +360,10 @@ def fit_sparse(mat_dict, cis_lengths, number_of_states=2, cis_weights_shape='sym
             number_of_states, cis_weights_hyperparams['param_function'], trans_weights_hyperparams['param_function'],
             lambdas_hyperparams['param_function'], cis_lengths, non_nan_mask, None)
 
+    if trans_weights_shape == 'none':
+        # Since we always save trans_weights, we will get it even if we init from a solution with a 'none' trans weights shape
+        # To avoid an error in overrode_value, we simply ignore the trans_weights init value
+        init_values['trans_weights'] = None
     x0 = np.concatenate(filter(np.size, [
         override_value(lambdas_hyperparams['init_values'], init_values.get('state_probabilities'), lambdas_hyperparams['flatten_function']),
         override_value(cis_weights_hyperparams['init_values'], init_values.get('cis_weights'), cis_weights_hyperparams['flatten_function']),
