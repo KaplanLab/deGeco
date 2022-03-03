@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 class Checkpoint:
-    def __init__(self, filename, save_interval=60*10):
+    def __init__(self, filename, save_interval=60*60):
         self.filename = filename
         self.state = dict()
         self.objective = np.nan
