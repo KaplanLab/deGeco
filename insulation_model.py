@@ -34,7 +34,7 @@ def log_insulation_probability(log_ck):
     return get_lower_triangle(np.flipud(flipped_probability_mat).T)
 
 def log_interaction_probability(log_ck, alpha, n, non_nan_mask):
-    dd = distance_decay_model.log_distance_decay(n, non_nan_mask, alpha)
+    dd = distance_decay_model.log_distance_decay([n], non_nan_mask, alpha, -1)
     ip = log_insulation_probability(log_ck)
     
     return dd + ip
