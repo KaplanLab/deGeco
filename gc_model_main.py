@@ -104,8 +104,8 @@ def main():
     else:
         cis_shape = trans_shape = args.shape
     if file_type == 'mcool':
-        if args.chrom == 'all':
-            chroms = [ 'all' ]
+        if args.chrom.startswith('all'):
+            chroms = [ args.chrom ]
         else:
             format_chr = lambda c : f'chr{c}' if not str(c).startswith('chr') else str(c)
             chroms = [ format_chr(x) for x in args.chrom.split(',') ]

@@ -23,10 +23,51 @@ def get_chr_lengths(mcool_filename, experiment_resolution, chromosomes):
 
     if chromosomes == ['all'] or chromosomes == 'all':
        chromosomes = c.chromnames
+    if chromosomes == ['all_no_ym'] or chromosomes == 'all_no_ym':
+       chromosomes = [ ch for ch in c.chromnames if ch not in ['chrY', 'chrM'] ]
     ranges = ( c.extent(chrom) for chrom in chromosomes )
     lengths = ( end - start for start, end in ranges )
     
     return tuple(lengths)
+
+def _get_start_chrYM(cooler_obj):
+    end = None
+    for c in ('chrY', 'chrM'):
+        if c in cooler_obj.chromnames:
+            start, _ = cooler_obj.extent(c)
+            if end is None or start < end:
+                end = start
+    return end
+
+def _read_square_up_to_bin(cooler_obj, end_bin):
+    """
+    Read the entire hi-c matrix in sparse form up to bin end_bin. This is a more
+    memory efficient way of doing c.matrix(as_pixels=True)[:end_bin+1, :end_bin+1]
+    """
+    with cooler.util.open_hdf5(cooler_obj.store, **cooler_obj.open_kws) as h5:
+        grp = h5[cooler_obj.root]
+        edges = grp["indexes"]["bin1_offset"][:end_bin+2]
+        end_pixel_overestimate = edges[-1]
+        count = grp['pixels']['count']
+        mat = {
+            'bin1_id': np.empty(end_pixel_overestimate, dtype=np.int32),
+            'bin2_id': np.empty(end_pixel_overestimate, dtype=np.int32),
+            'count': np.empty(end_pixel_overestimate, dtype=np.float64),
+        }
+        start_pos = 0
+        for cur_bin, start_pixel, end_pixel in zip(range(end_bin+1), edges[:-1], edges[1:]):
+            cols = grp['pixels']['bin2_id'][start_pixel:end_pixel] 
+            mask = cols <= end_bin
+            end_pos = start_pos + np.sum(mask)
+            mat['bin1_id'][start_pos:end_pos] = cur_bin
+            mat['bin2_id'][start_pos:end_pos] = cols[mask]
+            mat['count'][start_pos:end_pos] = count[start_pixel:end_pixel][mask]
+            start_pos = end_pos
+        mat['bin1_id'] = mat['bin1_id'][:end_pos]
+        mat['bin2_id'] = mat['bin2_id'][:end_pos]
+        mat['count'] = mat['count'][:end_pos]
+
+        return mat
 
 def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome1, *chroms, **matrix_args):
     """
@@ -49,6 +90,10 @@ def get_matrix_from_coolfile(mcool_filename, experiment_resolution, chromosome1,
 
     if chromosome1 == 'all':
         return mat[:, :]
+
+    if chromosome1 == 'all_no_ym':
+        end = _get_start_chrYM(c)
+        return mat[:end, :end]
 
     if len(chroms) == 0:
         slice_cis1 = slice(*c.extent(chromosome1))
@@ -87,6 +132,16 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
         mat['bin1_id'] = mat['bin1_id'].astype(np.int32)
         mat['bin2_id'] = mat['bin2_id'].astype(np.int32)
         balance_weights = c.bins()['weight'][:].to_numpy()
+        if matrix_args.get('balance', True):
+            mat['count'] = balance_counts(mat['bin1_id'], mat['bin2_id'], mat['count'], balance_weights)
+
+        mat['non_nan_mask'] = ~np.isnan(balance_weights)
+        return mat
+
+    if chromosome1 == 'all_no_ym':
+        end = _get_start_chrYM(c)
+        mat = _read_square_up_to_bin(c, end)
+        balance_weights = c.bins()['weight'][:end].to_numpy()
         if matrix_args.get('balance', True):
             mat['count'] = balance_counts(mat['bin1_id'], mat['bin2_id'], mat['count'], balance_weights)
 
