@@ -51,7 +51,7 @@ def calc_spearmanr(mat1, mat2):
     return stats.spearmanr(mat1[nn], mat2[nn])[0]
 
 def gc_fit(fit):
-    gc = fit['state_probabilities'] @ fit['state_weights'] @ fit['state_probabilities'].T
+    gc = fit['state_probabilities'] @ fit['cis_weights'] @ fit['state_probabilities'].T
     np.fill_diagonal(gc, np.nan)
     return array_utils.normalize_tri_l1(gc)
 
