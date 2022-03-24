@@ -74,6 +74,8 @@ def main():
     print(f"Original mcool filename is: {mcool_filename}")
     if chrom == 'all':
         chromnames = cooler.Cooler(f"{mcool_filename}::/resolutions/{args.target_res}").chromnames
+    elif chrom == 'all_no_ym':
+        chromnames = [ c for c in cooler.Cooler(f"{mcool_filename}::/resolutions/{args.target_res}").chromnames if c not in ['chrY', 'chrM']
     else:
         chromnames = [ x if x.startswith('chr') else f'chr{x}' for x in chrom.split(',') ]
     print(f"Working on chromosomes: {chromnames}")
