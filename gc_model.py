@@ -187,35 +187,6 @@ def weights_get_trans_hyperparams(shape, number_of_states):
 
     return weights_get_hyperparams(shape, number_of_states)
 
-def checkpoint_get_latest(checkpoint_dir):
-    max_iter = -np.inf
-    for f in os.listdir(checkpoint_dir):
-        try:
-            noext = int(os.path.splitext(f)[0])
-            iter_num = int(noext)
-        except ValueError:
-            continue
-        if iter_num > max_iter:
-            max_iter = iter_num
-    return max_iter
-
-def checkpoint_load(checkpoint_dir, iter_num):
-    checkpoint_path = os.path.join(checkpoint_dir, f"{iter_num}.npz")
-    params = np.load(checkpoint_path)
-
-    return params['x']
-
-def checkpoint_restore_from_dir(checkpoint_dir, x0_beginning):
-    if not checkpoint_dir:
-        return 0, x0_beginning
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
-    iter_num = checkpoint_get_latest(checkpoint_dir)
-    if not np.isfinite(iter_num):
-        return 0, x0_beginning
-
-    return iter_num+1, checkpoint_load(checkpoint_dir, iter_num)
-
 def sort_weights(weights, order=None):
     self_weights = np.diag(weights)
     M = self_weights.size
