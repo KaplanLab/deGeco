@@ -73,6 +73,7 @@ def main():
     parser.add_argument('--functions', help='Python file that includes regularization or lambdas_hyper functions', dest='functions', type=str, required=False, default=None)
     parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
     parser.add_argument('--kwargs', help='Additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
+    parser.add_argument('--matrix-kwargs', help='Additional args for cooler.matrix(), comma-separated key=value', dest='matrix_kwargs', type=str, required=False, default='')
     parser.add_argument('--transonly', help='Fit only trans regions', dest='transonly', action='store_true', default=False)
     parser.add_argument('--disable-checkpoint', help='Disable checkpoints (for interruptible calculation)', dest='checkpoint_disable', action='store_true')
     parser.add_argument('--checkpoint-file', help='Customize the checkpoint file pattern', dest='checkpoint_filename', default='{output}_{iteration}.npz')
@@ -104,6 +105,8 @@ def main():
     else:
         cis_shape = trans_shape = args.shape
     if file_type == 'mcool':
+        matrix_kwargs = parse_keyvalue(args.matrix_kwargs)
+        print(f"args for cooler.matrix(): {matrix_kwargs}")
         if args.chrom.startswith('all'):
             chroms = [ args.chrom ]
         else:
@@ -112,9 +115,9 @@ def main():
         experiment_resolution = args.resolution
         cis_lengths = get_chr_lengths(filename, experiment_resolution, chroms)
         if args.sparse:
-            interactions_mat = preprocess_sprase(get_sparse_matrix_from_coolfile(filename, experiment_resolution, *chroms, transonly=args.transonly))
+            interactions_mat = preprocess_sprase(get_sparse_matrix_from_coolfile(filename, experiment_resolution, *chroms, transonly=args.transonly, **matrix_kwargs))
         else:
-            interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, *chroms)
+            interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, *chroms, **matrix_kwargs)
     else:
         cis_lengths = None
         interactions_mat = lambda: np.load(filename)
