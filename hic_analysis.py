@@ -125,13 +125,14 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
     else:
         coolfile = f'{mcool_filename}'
     c = cooler.Cooler(coolfile)
+    weight_column = matrix_args.get('balance', 'weight')
 
     if chromosome1 == 'all':
         # If we fetch the entire dataset as sparse values, it's faster this way
         mat = c.pixels(as_dict=True)[:]
         mat['bin1_id'] = mat['bin1_id'].astype(np.int32)
         mat['bin2_id'] = mat['bin2_id'].astype(np.int32)
-        balance_weights = c.bins()['weight'][:].to_numpy()
+        balance_weights = c.bins()[weight_column][:].to_numpy()
         if matrix_args.get('balance', True):
             mat['count'] = balance_counts(mat['bin1_id'], mat['bin2_id'], mat['count'], balance_weights)
 
@@ -141,7 +142,7 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
     if chromosome1 == 'all_no_ym':
         end = _get_start_chrYM(c)
         mat = _read_square_up_to_bin(c, end)
-        balance_weights = c.bins()['weight'][:end].to_numpy()
+        balance_weights = c.bins()[weight_column][:end].to_numpy()
         if matrix_args.get('balance', True):
             mat['count'] = balance_counts(mat['bin1_id'], mat['bin2_id'], mat['count'], balance_weights)
 
@@ -150,7 +151,7 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
 
     if len(chroms) == 0:
         start, end = c.extent(chromosome1)
-        non_nan_mask = ~np.isnan(c.bins()[start:end]['weight'].to_numpy())
+        non_nan_mask = ~np.isnan(c.bins()[start:end][weight_column].to_numpy())
         m = c.matrix(as_pixels=True, **matrix_args)[start:end, start:end]
         m[['bin1_id', 'bin2_id']] -= start
     else:
@@ -166,7 +167,7 @@ def get_sparse_matrix_from_coolfile(mcool_filename, resolution, chromosome1, *ch
             start2, end2 = c.extent(c2)
 
             if c1 == c2:
-                non_nan_masks.append(~np.isnan(c.bins()[start1:end1]['weight'].to_numpy()))
+                non_nan_masks.append(~np.isnan(c.bins()[start1:end1][weight_column].to_numpy()))
                 if transonly:
                     continue
 
