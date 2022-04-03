@@ -58,7 +58,7 @@ def main():
     parser.add_argument('-m', help='Input file name', dest='filename', type=str, required=True)
     parser.add_argument('-t', help='Input file type', dest='type', type=str, choices=['mcool, numpy, auto'], default='auto')
     parser.add_argument('-o', help='Output file name', dest='output', type=str, required=False, default='gc_out.npz')
-    parser.add_argument('-ch', help='Comma-separated list of chromosomes (required for type=mcool). format: chrN',
+    parser.add_argument('-ch', help='Comma-separated list of chromosomes (required for type=mcool)',
             dest='chrom', type=str, required=False)
     parser.add_argument('-kb', help='Resolution (required for type=mcool)', dest='resolution', type=int, required=False)
     parser.add_argument('-n', help='Number of states', dest='nstates', type=int, required=False, default=2)
@@ -110,8 +110,7 @@ def main():
         if args.chrom.startswith('all'):
             chroms = [ args.chrom ]
         else:
-            format_chr = lambda c : f'chr{c}' if not str(c).startswith('chr') else str(c)
-            chroms = [ format_chr(x) for x in args.chrom.split(',') ]
+            chroms = list(args.chrom.split(','))
         experiment_resolution = args.resolution
         cis_lengths = get_chr_lengths(filename, experiment_resolution, chroms)
         if args.sparse:
