@@ -301,3 +301,14 @@ def remove_nan(data):
 
 def merge_by_diagonal(a, b):
     return remove_main_diag(np.tril(a, k=-1) + np.triu(b, k=1))
+
+def chr_select(fit, indices):
+    """
+    Return a copy of the given fit, with lambdas reduced to the bins from the requested chromosomes. cis_lengths is updated accordingly.
+    """
+    chr_offsets = np.cumsum((0,) + tuple(fit['cis_lengths']))
+    cis_lengths = [ fit['cis_lengths'][i] for i in indices ]
+    slices = [ slice(chr_offsets[i], chr_offsets[i+1]) for i in indices ]
+    lambdas = np.concatenate([ fit['state_probabilities'][s] for s in slices ])
+
+    return {**fit, 'cis_lengths': cis_lengths, 'state_probabilities': lambdas }
