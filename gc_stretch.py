@@ -44,16 +44,6 @@ def stretch_fit(lowres_params, ratio, target_nn_list=None):
     return model_params
 
 
-def get_nn(mcool_filename, resolution, chromosome):
-    c = cooler.Cooler(f'{mcool_filename}::/resolutions/{resolution}')
-    if chromosome == 'all':
-        weights = c.bins()[:]['weight']
-    else:
-        chr_start, chr_end = c.extent(chromosome)
-        weights = c.bins()[chr_start:chr_end]['weight']
-    return ~np.isnan(weights.to_numpy())
-
-
 def main():
     parser = argparse.ArgumentParser(description = 'Stretch low-res solutions to higher-res')
     parser.add_argument('-f', help='fit to stretch', dest='filename', type=str, required=True)
@@ -72,17 +62,12 @@ def main():
     chrom = args.chrom or fit['metadata']['args']['chrom']
     mcool_filename = args.mcool or fit['metadata']['args']['filename']
     print(f"Original mcool filename is: {mcool_filename}")
-    if chrom == 'all':
-        chromnames = cooler.Cooler(f"{mcool_filename}::/resolutions/{args.target_res}").chromnames
-    elif chrom == 'all_no_ym':
-        chromnames = [ c for c in cooler.Cooler(f"{mcool_filename}::/resolutions/{args.target_res}").chromnames if c not in ['chrY', 'chrM'] ]
-    else:
-        chromnames = [ x if x.startswith('chr') else f'chr{x}' for x in chrom.split(',') ]
+    chromnames = chrom.split(',')
     print(f"Working on chromosomes: {chromnames}")
 
     ratio = args.source_res // args.target_res
     print(f"Stretching solution from {args.source_res} to {args.target_res}, ratio is {ratio}")
-    target_nn_list = [ get_nn(mcool_filename, args.target_res, c) for c in chromnames ]
+    target_nn_list = hic.get_nn_from_mcool(mcool_filename, args.target_res, *chromnames)
 
     parameters = stretch_fit(fit['parameters'], ratio, target_nn_list)
     metadata = dict(lowres_metadata = fit['metadata'], stretch_args = vars(args))

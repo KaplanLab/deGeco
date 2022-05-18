@@ -39,6 +39,32 @@ def _get_start_chrYM(cooler_obj):
                 end = start
     return end
 
+def get_nn_from_mcool(mcool_filename, resolution, *chromosomes, weight_column='weight'):
+    """
+    Return a list of masks for each chromosome, marking which bin is usable after balancing.
+
+    :param str mcool_filename: The file to read from
+    :param int resolution: The  resolution (bin size) to read
+    :param iterable chromosomes: The chromosomes to work on.
+    :param str weight_column: The cooler file column that stores the balancing weights
+
+    :return: list of arrays: non-nan masks
+    """
+    c = cooler.Cooler(f'{mcool_filename}::/resolutions/{resolution}')
+    if chromosome1 == 'all':
+        chromnames = c.chromnames
+    elif chromosome1 == 'all_no_ym':
+        chromnames = [ ch for ch in c.chromnames if ch not in ['chrY', 'chrM', 'Y', 'M'] ]
+    else:
+        chromnames = [chromosome1] + list(chromosomes)
+
+    def chr_nn(chromosome):
+        chr_start, chr_end = c.extent(chromosome)
+        weights = c.bins()[chr_start:chr_end][weight_column]
+        return ~np.isnan(weights.to_numpy())
+
+    return [ chr_nn(ch) for ch in chromnames ]
+
 def _read_square_up_to_bin(cooler_obj, end_bin):
     """
     Read the entire hi-c matrix in sparse form up to bin end_bin. This is a more

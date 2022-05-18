@@ -9,7 +9,8 @@ import itertools
 from gc_model import fit
 import gc_model
 import gc_datafile
-from hic_analysis import get_matrix_from_coolfile, get_sparse_matrix_from_coolfile, get_chr_lengths, preprocess_sprase
+import gc_stretch
+from hic_analysis import get_matrix_from_coolfile, get_sparse_matrix_from_coolfile, get_chr_lengths, get_nn_from_mcool, preprocess_sprase
 from array_utils import balance
 from zero_sampler import ZeroSampler
 
@@ -70,6 +71,7 @@ def main():
     parser.add_argument('--zero-sample', help='Number of zeros to sample', dest='zero_sample', type=int, default=None)
     parser.add_argument('-b', help='Balance matrix before fitting', dest='balance', type=bool, required=False, default=False)
     parser.add_argument('--init', help='Solution to use as initial state', dest='init', type=str, required=False, default=None)
+    parser.add_argument('--init-stretch-by', help='Factor to stretch solution from --init', dest='init_stretch', type=int, required=False, default=1)
     parser.add_argument('--functions', help='Python file that includes regularization or lambdas_hyper functions', dest='functions', type=str, required=False, default=None)
     parser.add_argument('--optimize-args', help='Override optimization args, comma-separated key=value', dest='optimize', type=str, required=False, default='')
     parser.add_argument('--kwargs', help='Additional args, comma-separated key=value', dest='kwargs', type=str, required=False, default='')
@@ -113,6 +115,7 @@ def main():
             chroms = list(args.chrom.split(','))
         experiment_resolution = args.resolution
         cis_lengths = get_chr_lengths(filename, experiment_resolution, chroms)
+        target_nn = get_nn_from_mcool(args.filename, experiment_resolution, *chroms)
         if args.sparse:
             interactions_mat = preprocess_sprase(get_sparse_matrix_from_coolfile(filename, experiment_resolution, *chroms, transonly=args.transonly, **matrix_kwargs))
         else:
@@ -120,6 +123,8 @@ def main():
     else:
         cis_lengths = None
         interactions_mat = lambda: np.load(filename)
+        if args.init and args.init_stretch:
+            raise NotImplementedError("Stretching of initial solutions is supported only for mcool matrices")
         experiment_resolution = args.resolution or 1
 
     if args.balance:
@@ -143,6 +148,9 @@ def main():
     if args.init:
         print(f'Using {args.init} to init fit')
         init_values = gc_datafile.load(args.init)['parameters']
+        if args.init_stretch > 1:
+            print(f'Stretching initial solution by factor of {args.init_stretch}')
+            init_values = gc_stretch.stretch_fit(init_values, args.init_stretch, target_nn)
 
     fit_args = dict(number_of_states=nstates, cis_weights_shape=cis_shape, trans_weights_shape=trans_shape, init_values=init_values, cis_lengths=cis_lengths,
             optimize_options=optimize_options, resolution=1)
