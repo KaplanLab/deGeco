@@ -51,12 +51,12 @@ def get_nn_from_mcool(mcool_filename, resolution, *chromosomes, weight_column='w
     :return: list of arrays: non-nan masks
     """
     c = cooler.Cooler(f'{mcool_filename}::/resolutions/{resolution}')
-    if chromosome1 == 'all':
+    if chromosomes[0] == 'all':
         chromnames = c.chromnames
-    elif chromosome1 == 'all_no_ym':
+    elif chromosomes[0] == 'all_no_ym':
         chromnames = [ ch for ch in c.chromnames if ch not in ['chrY', 'chrM', 'Y', 'M'] ]
     else:
-        chromnames = [chromosome1] + list(chromosomes)
+        chromnames = list(chromosomes)
 
     def chr_nn(chromosome):
         chr_start, chr_end = c.extent(chromosome)
