@@ -121,11 +121,14 @@ def main():
         else:
             interactions_mat = lambda: get_matrix_from_coolfile(filename, experiment_resolution, *chroms, **matrix_kwargs)
     else:
-        cis_lengths = None
         interactions_mat = lambda: np.load(filename)
-        if args.init and args.init_stretch:
-            raise NotImplementedError("Stretching of initial solutions is supported only for mcool matrices")
+        cis_lengths = None
         experiment_resolution = args.resolution or 1
+        if args.init and args.init_stretch:
+            # We need the not-null vector for stretching, so no lazy loading of the matrix
+            interactions_mat_dense = interactions_mat()
+            interactions_mat = lambda: interactions_mat_dense
+            target_nn = [ ~np.isnan(interactions_mat_dense).all(axis=1) ]
 
     if args.balance:
         print('Will balance the matrix before fit')
