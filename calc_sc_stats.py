@@ -17,8 +17,8 @@ from toolz.curried import *
 
 run_dir = sys.argv[1]
 fit_to_mat = lambda fit: gc.generate_interactions_matrix(**fit)
-sc_hic = lambda s, res, reads: load_params(f"{run_dir}/fit/fit_chr18_{s}st_res{res}_reads{reads}_best10.npz")
-orig = lambda s, res: load_params(f"{run_dir}/orig/orig_chr18_{s}st_{res}_best10.npz")
+sc_hic = lambda s, res, reads: load_params(f"{run_dir}/fit/fit_chr19_{s}st_res{res}_reads{reads}_best10.npz")
+orig = lambda s, res: load_params(f"{run_dir}/orig/orig_chr19_{s}st_{res}_best10.npz")
 
 st = 2
 resolutions = [40000, 50000, 100000, 250000, 500000, 1000000]
