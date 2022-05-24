@@ -34,6 +34,7 @@ def main():
     parser.add_argument('-c', help='chromosome', dest='chromosome', type=str, required=False)
     parser.add_argument('-r', help='resolution', dest='resolution', type=str, required=False)
     parser.add_argument('-f', help='fit filename', dest='fit', type=str, required=True)
+    parser.add_argument('--fit-chrs', help='fit chromosomes to use', dest='fit_chrs', type=str, required=False, default='')
     parser.add_argument('-o', help='output file name', dest='output', type=str, required=True)
     parser.add_argument('--seed', help='set random seed', dest='seed', type=int, required=False, default=None)
     parser.add_argument('--balance', help='set balancing', dest='balance', type=str, required=False, choices=['yes', 'no', 'mcool'], default='yes')
@@ -73,6 +74,9 @@ def main():
 
     print(f"Reading fit from {args.fit} and converting to probabilities")
     fit = load_params(args.fit)
+    if args.fit_chrs:
+        chrs = [ int(x) for x in args.fit_chrs.split(',') ]
+        fit = hic.chr_select(fit, chrs)
     fit_mat = gc.generate_interactions_matrix(**fit)
     print(f"Resampling from fit using {reads} reads")
     resampled = resample_matrix(fit_mat, reads)
