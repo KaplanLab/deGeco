@@ -68,11 +68,11 @@ def get_nn_from_mcool(mcool_filename, resolution, *chromosomes, weight_column='w
 def _read_square_up_to_bin(cooler_obj, end_bin):
     """
     Read the entire hi-c matrix in sparse form up to bin end_bin. This is a more
-    memory efficient way of doing c.matrix(as_pixels=True)[:end_bin+1, :end_bin+1]
+    memory efficient way of doing c.matrix(as_pixels=True)[:end_bin, :end_bin]
     """
     with cooler.util.open_hdf5(cooler_obj.store, **cooler_obj.open_kws) as h5:
         grp = h5[cooler_obj.root]
-        edges = grp["indexes"]["bin1_offset"][:end_bin+2]
+        edges = grp["indexes"]["bin1_offset"][:end_bin+1]
         end_pixel_overestimate = edges[-1]
         count = grp['pixels']['count']
         mat = {
@@ -81,9 +81,9 @@ def _read_square_up_to_bin(cooler_obj, end_bin):
             'count': np.empty(end_pixel_overestimate, dtype=np.float64),
         }
         start_pos = 0
-        for cur_bin, start_pixel, end_pixel in zip(range(end_bin+1), edges[:-1], edges[1:]):
+        for cur_bin, start_pixel, end_pixel in zip(range(end_bin), edges[:-1], edges[1:]):
             cols = grp['pixels']['bin2_id'][start_pixel:end_pixel] 
-            mask = cols <= end_bin
+            mask = cols < end_bin
             end_pos = start_pos + np.sum(mask)
             mat['bin1_id'][start_pos:end_pos] = cur_bin
             mat['bin2_id'][start_pos:end_pos] = cols[mask]
