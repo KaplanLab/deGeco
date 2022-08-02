@@ -1,6 +1,7 @@
 import warnings
 import numpy as np
 import os
+import sys
 import glob
 import matplotlib.pyplot as plt
 import matplotlib
@@ -16,9 +17,11 @@ from toolz.curried import *
 
 fit2mat = lambda fit: gc.generate_interactions_matrix(**fit)
 
+resampled_dir = sys.argv[1]
+downsampled_dir = sys.argv[2]
 batch_load = compose(map(np.load), glob.glob)
-downsampled_chr19 = lambda res, pct: np.load(f'/storage/md_kaplan/hagaik/paper/figure2/downsampled_data_noallzeros/chr19_{res}_{float(pct)}.npy')
-downsampled_fit = lambda res, pct, st: load_params(f'/storage/md_kaplan/hagaik/paper/figure2/downsampled_data_noallzeros/fit_diag_{st}st_chr19_{res}_{float(pct)}_best.npz')
+downsampled_chr19 = lambda res, pct: np.load(f'{resampled_dir}/chr19_{res}_{float(pct)}.npy')
+downsampled_fit = lambda res, pct, st: load_params(f'{downsampled_dir}/fit_{st}st_chr19_{res}_{float(pct)}_best.npz')
 
 st = 2
 resolutions = (5000, 10000, 20000)
