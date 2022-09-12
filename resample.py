@@ -57,6 +57,8 @@ def main():
             raise RuntimeError("--reads ratio must be between 0 and 1")
         print(f"Using {args.reads:.2%} of reads of chr {args.chromosome} at resolution {args.resolution} from {args.filename}")
         unbalanced = hic.get_matrix_from_coolfile(args.filename, args.resolution, args.chromosome, balance=False)
+        nn = hic.get_nn_from_mcool(args.filename, args.resolution, args.chromosome)[0]
+        unbalanced = unbalanced[:, nn][nn, :]
         total_reads = np.nansum(array_utils.get_lower_triangle(unbalanced))
         reads = total_reads * args.reads
         print(f"Data has {total_reads} reads, using {reads}")
