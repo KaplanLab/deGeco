@@ -10,9 +10,7 @@ with different weights.
 Exeuctables:
 
 * `gc_model_main.py` is the executable used to fit the model to a given Hi-C data file. Data can be in mcool or npy formats.
-* `visualize.py` is an executable used to visualize the results of `gc_model_main`
-* `figures.py` is another visualization script, showing different figures
-* `*_script.sh` are wrapper scripts to be used when running on clusters
+* `scripts` dir contains scripts for analysing data, downsampling matrices, etc
 
 Libraries:
 
