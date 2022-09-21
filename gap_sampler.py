@@ -1,0 +1,47 @@
+# cython: language_level=3, boundscheck=False, wraparound=False, cdivision=True
+import numpy as np
+
+def get_position(p, gaps_cumsum, gaps_pos):
+    while p >= gaps_cumsum[gaps_pos]:
+        gaps_pos += 1
+    return gaps_pos
+
+def get_gap(gaps_cumsum, p, i):
+    if p == 0:
+        return i + 1
+    return i - gaps_cumsum[p-1] + 1
+
+def pos2rowcol(p, bin1_id, bin2_id):
+    if p == 0:
+        return 0, -1
+    nonzero_p = p - 1
+
+    return bin1_id[nonzero_p], bin2_id[nonzero_p]
+
+def move_right(nbins, row, col, n):
+    #flattened = (nbins + nbins - (row-1)) * row // 2 + col
+    #new_flattened = flattened + n
+    #new_row = int(((2*nbins+1) - np.sqrt((2*nbins+1)**2 - 8*new_flattened))/2)
+    #new_col = new_flattened - (nbins + nbins - (new_row-1)) * new_row // 2 
+    new_col = col + n
+    new_row = row
+    while new_col >= nbins:
+        new_row += 1
+        new_col = new_col - nbins + new_row
+
+    return new_row, new_col
+
+cdef get_next(long nbins, int[::1] bin1_id, int[::1] bin2_id, long[::1] gaps_cumsum, long zero_number):
+
+cpdef sample(long nbins, int[::1] bin1_id, int[::1] bin2_id, long[::1] gaps_cumsum, int step=1, int start=0):
+    count = gaps_cumsum[-1]
+    pos = 0
+    zeros = []
+    for i in range(start, count, step):
+        pos = get_position(i, gaps_cumsum, pos)
+        i_gap = get_gap(gaps_cumsum, pos, i)
+        row, col = pos2rowcol(pos, bin1_id, bin2_id)
+        zero_row, zero_col = move_right(nbins, row, col, i_gap)
+        zeros.append((zero_row, zero_col))
+
+    return zeros
