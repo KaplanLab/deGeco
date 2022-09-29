@@ -62,13 +62,18 @@ def calc_sc_stats(st, resolutions, reads):
     lambda_mean_diffs = np.empty((len(resolutions), len(reads)))
     lr = np.empty((len(resolutions), len(reads)))
     normalized_pearsonr = np.empty((len(resolutions), len(reads)))
-    gc_correlation = np.empty((len(resolutions), len(reads)))
+    normalized_spearmanr = np.empty((len(resolutions), len(reads)))
+    parametric_normalized_pearsonr = np.empty((len(resolutions), len(reads)))
+    parametric_normalized_spearmanr = np.empty((len(resolutions), len(reads)))
+    gc_pearson = np.empty((len(resolutions), len(reads)))
+    gc_spearman = np.empty((len(resolutions), len(reads)))
     for i, res in enumerate(resolutions):
         print(f"* Resolution: {res}")
         print("** Loading original fit:", end=" ")
         orig_fit = orig(st, res)
         orig_mat = fit_to_mat(orig_fit)
         orig_normalized = hic.normalize_distance(orig_mat)
+        normalizing_mat = orig_normalized / orig_mat
         print("done")
         for j, r in enumerate(reads):
             print(f"** Reads: {r}")
@@ -76,6 +81,7 @@ def calc_sc_stats(st, resolutions, reads):
             sc_fit = sc_hic(st, res, r)
             sc_mat = gc.generate_interactions_matrix(**sc_fit)
             sc_normalized = hic.normalize_distance(sc_mat)
+            sc_normalized_parametric = sc_mat * normalizing_mat
             print("done")
             print("*** Pearson:", end=' ')
             pearson_corrs[i, j] = calc_pearsonr(orig_mat, sc_mat)
@@ -92,15 +98,28 @@ def calc_sc_stats(st, resolutions, reads):
             print("*** Normalized pearson:", end=' ')
             normalized_pearsonr[i, j] = calc_pearsonr(orig_normalized, sc_normalized)
             print(normalized_pearsonr[i, j])
+            print("*** Normalized spearman:", end=' ')
+            normalized_spearmanr[i, j] = calc_spearmanr(orig_normalized, sc_normalized)
+            print(normalized_spearmanr[i, j])
+            print("*** Normalized pearson (parameteric):", end=' ')
+            parametric_normalized_pearsonr[i, j] = calc_pearsonr(orig_normalized, sc_normalized_parametric)
+            print(parametric_normalized_pearsonr[i, j])
+            print("*** Normalized spearman (parameteric):", end=' ')
+            parametric_normalized_spearmanr[i, j] = calc_spearmanr(orig_normalized, sc_normalized_parametric)
+            print(parametric_normalized_spearmanr[i, j])
             print("*** LR:", end=' ')
             lr[i, j] = likelihood_ratio(orig_mat, sc_mat)
             print(lr[i, j])
             print("*** GC-only pearson", end=' ')
-            gc_correlation[i, j] = calc_pearsonr(gc_fit(orig_fit), gc_fit(sc_fit))
-            print(gc_correlation[i, j])
+            gc_pearson[i, j] = calc_pearsonr(gc_fit(orig_fit), gc_fit(sc_fit))
+            print(gc_pearson[i, j])
+            print("*** GC-only spearman", end=' ')
+            gc_spearman[i, j] = calc_spearmanr(gc_fit(orig_fit), gc_fit(sc_fit))
+            print(gc_spearman[i, j])
     return dict(pearson_corrs=pearson_corrs, spearman_corrs=spearman_corrs,
-                normalized_pearson_corrs=normalized_pearsonr, lr=lr, lambda_mean_diffs=lambda_mean_diffs,
-                gc_correlation=gc_correlation)
+                normalized_pearson_corrs=normalized_pearsonr, normalized_spearman_corrs=normalized_spearmanr,
+                parametric_normalized_pearson_corrs=parametric_normalized_pearsonr, parametric_normalized_spearman_corrs=parametric_normalized_spearmanr,
+                lr=lr, lambda_mean_diffs=lambda_mean_diffs, gc_pearson=gc_pearson, gc_spearman=gc_spearman)
 
 print(f"Using run dir: {run_dir}")
 sc_stats = calc_sc_stats(2, resolutions, reads)
