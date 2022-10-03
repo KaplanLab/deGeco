@@ -1,4 +1,4 @@
-# Compartments
+# deGeco
 
 A probability-based model of genome compartments, used to explain results of Hi-C experiments.
 
