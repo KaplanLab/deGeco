@@ -1,5 +1,4 @@
 numpy
-cython
 autograd
 toolz
 scipy

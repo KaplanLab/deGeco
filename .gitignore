@@ -9,8 +9,8 @@
 
 # cython
 *.so
-*.c
 *.html
+build
 
 # data files
 data_files/

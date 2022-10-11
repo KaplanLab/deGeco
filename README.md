@@ -33,7 +33,7 @@ Libraries:
 To build the Cython modules, install Cython (`pip install -r requirements.txt`) and run:
 
 ```
-python setup.py build_ext -b .
+python setup.py build_ext --inplace
 ```
 
 ## Fitting the model
