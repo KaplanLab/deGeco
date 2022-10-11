@@ -36,6 +36,12 @@ To build the Cython modules, install Cython (`pip install -r requirements.txt`) 
 python setup.py build_ext --inplace
 ```
 
+Tests are run with pytest. First install required modules from `requirements-dev.txt` then run:
+
+```
+python -m pytest
+```
+
 ## Fitting the model
 The model accepts Hi-C data as `.mcool` or `.npy` files.  Fitted parameters will be written as an `.npz` file.
 
