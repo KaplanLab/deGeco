@@ -41,7 +41,8 @@ def main():
             if os.path.exists(parsed_target):
                 print(f"Fit {n+1} target already exists, skipping:", parsed_target)
             else:
-                os.symlink(os.path.abspath(filename), parsed_target)
+                relative_path = os.path.relpath(filename, os.path.dirname(parsed_target))
+                os.symlink(relative_path, parsed_target)
                 print(f"Fit {n+1} linked to target:", parsed_target)
 
 if __name__ == '__main__':
