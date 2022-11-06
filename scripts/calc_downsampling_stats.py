@@ -2,21 +2,23 @@ import warnings
 import glob
 import sys
 import itertools
+
 from scipy import stats
 import numpy as np
+from toolz.curried import *
 
+sys.path.append('.')
 import gc_model as gc
 import gc_datafile
 import array_utils
 import hic_analysis as hic
-from toolz.curried import *
 
 batch_load = compose(map(np.load), glob.glob)
 downsampled_chr19 = lambda res, pct: hic.get_matrix_from_coolfile(f'/storage/md_kaplan/hagaik/chr19_downsampled/chr19_downsampled_{float(pct)}.mcool', res, 'all')
-downsampled_fit = lambda res, pct, st: gc_datafile.load_params(f'/storage/md_kaplan/hagaik/chr19_downsampled/{st}states/output/fit_{st}st_chr19_{res}_{float(pct)}_best.npz')
+downsampled_fit = lambda res, pct, st: gc_datafile.load_params(f'/storage/md_kaplan/hagaik/chr19_downsampled/{st}states/output/chr19_{st}st_s{float(pct)}_{res}_best.npz')
 
 resolutions = (10000, 20000, 100000, 500000)
-sample_rates = (0.0005,0.001,0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1) # 0.001 and below are all-NaNs
+sample_rates = (0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1)
 
 @curry
 def calc_pearsonr(mat1, mat2):

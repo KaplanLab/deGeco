@@ -1,18 +1,19 @@
 import warnings
 import glob
 import sys
+
 from scipy import stats
 import numpy as np
-import sys
+from toolz.curried import *
 
+sys.path.append('.')
 import gc_model as gc
 import gc_datafile
 import array_utils
 import hic_analysis as hic
-from toolz.curried import *
 
 mcool_filename = mcool_filename = '/srv01/technion/hagaik/storage/Rao_GM12878_zoomified.mcool'
-filename_50k_best = lambda d, s: glob.glob(f"/srv01/technion/hagaik/storage/stretch/{d}/all_no_ym_stretched_{s}st_50000_z*_best.npz")[0]
+filename_50k_best = lambda d, s: glob.glob(f"/srv01/technion/hagaik/storage/stretch/{d}/all_no_ym_{s}st_50000_best.npz")[0]
 fit_50k_best = curry(compose(gc_datafile.load_params, filename_50k_best))
 fit_50k_gm = fit_50k_best("500k_100k_50k_no_ym")
 fit_50k_gm_chr = curry(lambda s, c: hic.normalize_distance(gc.generate_interactions_matrix(**hic.chr_select(fit_50k_gm(s), c))))

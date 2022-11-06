@@ -1,24 +1,23 @@
 import warnings
-import numpy as np
 import os
 import glob
-import matplotlib.pyplot as plt
-import matplotlib
 import itertools
-from scipy import stats
-import subprocess
 import sys
 
+import numpy as np
+from scipy import stats
+from toolz.curried import *
+
+sys.path.append('.')
 import gc_model as gc
 from gc_datafile import load_params
 import array_utils
 import hic_analysis as hic
-from toolz.curried import *
 
 run_dir = sys.argv[1]
 fit_to_mat = lambda fit: gc.generate_interactions_matrix(**fit)
-sc_hic = lambda s, res, reads: load_params(f"{run_dir}/fit/fit_chr19_{s}st_res{res}_reads{reads}_best10.npz")
-orig = lambda s, res: load_params(f"{run_dir}/orig/orig_chr19_{s}st_{res}_best10.npz")
+sc_hic = lambda s, res, reads: load_params(f"{run_dir}/fit/chr19_{s}st_res{res}_reads{reads}_best.npz")
+orig = lambda s, res: load_params(f"{run_dir}/origin/chr19_{s}st_{res}_best.npz")
 
 st = 2
 resolutions = [40000, 50000, 100000, 250000, 500000, 1000000]

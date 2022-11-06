@@ -2,7 +2,7 @@
 set -eE
 mcool_filename=~/storage/Rao_GM12878_zoomified.mcool
 chr=chr19
-sampling_rates=(1.0 0.75 0.5 0.25 0.1 0.05 0.01 0.005)
+sampling_rates=(1.0 0.75 0.5 0.25 0.1 0.05 0.01 0.005 0.001 0.0005)
 resolutions=(10000 20000 100000 500000)
 resolutions_asc=(`echo ${resolutions[@]} | tr ' ' '\n' | sort -n `)
 resolutions_desc=(`echo ${resolutions[@]} | tr ' ' '\n' | sort -nr`)
