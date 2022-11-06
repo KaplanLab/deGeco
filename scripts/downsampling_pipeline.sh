@@ -2,7 +2,6 @@
 set -eE
 mcool_filename=~/storage/Rao_GM12878_zoomified.mcool
 chr=chr19
-st=2
 sampling_rates=(1.0 0.75 0.5 0.25 0.1 0.05 0.01 0.005)
 resolutions=(10000 20000 100000 500000)
 resolutions_asc=(`echo ${resolutions[@]} | tr ' ' '\n' | sort -n `)
@@ -10,7 +9,7 @@ resolutions_desc=(`echo ${resolutions[@]} | tr ' ' '\n' | sort -nr`)
 iterations=10
 
 if [ "$1" = --help ]; then
-    echo Usage: $0 '[OUTPUT_DIR]'
+    echo Usage: $0 '[OUTPUT_DIR [STATES]]'
     echo
     echo Will downsample and fit $chr mcool $mcool_filename using this procedure:
     echo - Downsample at rates: ${sampling_rates[@]}
@@ -19,6 +18,7 @@ if [ "$1" = --help ]; then
     echo - For each resolution, choose the best fit using the achieved log likelihood score.
     echo
     echo Output files will be put in an output/ directory inside OUTPUT_DIR, or current dir if this is not given. OUTPUT_DIR will be created if it does not exist.
+    echo Fits will be done using STATES states, of 2 if unspecified.
 	echo Log files will be written to a logs/ directory inside OUTPUT_DIR.
     echo Restarting an interrupted run will skip previously completed steps.
     echo Note that running many fits in parallel can have large memory and CPU requirements.
@@ -27,6 +27,8 @@ fi
 
 output_dir=$1
 [ -z "$output_dir" ] && output_dir=.
+st=$2
+[ -z "$st" ] && st=2
 mkdir -p $output_dir/logs
 mkdir -p $output_dir/output
 
