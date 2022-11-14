@@ -13,10 +13,10 @@ import array_utils
 import hic_analysis as hic
 
 mcool_filename = mcool_filename = '/srv01/technion/hagaik/storage/Rao_GM12878_zoomified.mcool'
-filename_50k_best = lambda d, s: glob.glob(f"/srv01/technion/hagaik/storage/stretch/{d}/all_no_ym_{s}st_50000_best.npz")[0]
+filename_50k_best = lambda d, s, r: glob.glob(f"/srv01/technion/hagaik/storage/stretch/{d}/all_no_ym_stretched_{s}st_50000_z*_{r}.npz")[0]
 fit_50k_best = curry(compose(gc_datafile.load_params, filename_50k_best))
 fit_50k_gm = fit_50k_best("500k_100k_50k_no_ym")
-fit_50k_gm_chr = curry(lambda s, c: hic.normalize_distance(gc.generate_interactions_matrix(**hic.chr_select(fit_50k_gm(s), c))))
+fit_50k_gm_chr = curry(lambda s, c, run='best': hic.normalize_distance(gc.generate_interactions_matrix(**hic.chr_select(fit_50k_gm(s, run), c))))
 
 @curry
 def calc_pearsonr(mat1, mat2):
@@ -74,13 +74,17 @@ def calc_stats(res, chroms, get_fit_func, st):
     return fit_spearman, fit_pearson, optimal_spearman, optimal_pearson
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} STATES")
+    if len(sys.argv) not in [2,3]:
+        print(f"Usage: {sys.argv[0]} STATES [RUN_LABEL]")
         sys.exit(1)
     st = sys.argv[1]
-    filename = f"/srv01/technion/hagaik/storage/stretch/500k_100k_50k_no_ym/stats_{st}st.npz"
+    try:
+        run = sys.argv[2]
+    except:
+        run = 'best'
+    filename = f"/srv01/technion/hagaik/storage/stretch/500k_100k_50k_no_ym/stats_{st}st_{run}.npz"
     print(f"Calculating stats with states={st}, saving to", filename)
-    fit_spearman, fit_pearson, optimal_spearman, optimal_pearson = calc_stats(res=50000, chroms=range(1, 23), get_fit_func=fit_50k_gm_chr, st=st)
+    fit_spearman, fit_pearson, optimal_spearman, optimal_pearson = calc_stats(res=50000, chroms=range(1, 23), get_fit_func=fit_50k_gm_chr(run=run), st=st)
     np.savez(filename, **{
             f'fit_spearman{st}': fit_spearman,
             f'fit_pearson{st}': fit_pearson,
