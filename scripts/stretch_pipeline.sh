@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
-mcool_filename=~/storage/Rao_GM12878_zoomified.mcool
-chr=all_no_ym
+mcool_filename=${mcool_filename:-~/storage/Rao_GM12878_zoomified.mcool}
+chr=${chr:-all_no_ym}
 mkdir -p logs
 mkdir -p output
 
