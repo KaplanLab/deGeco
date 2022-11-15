@@ -68,7 +68,7 @@ Using the sparse implementation dramatically reduces memory requirements. This m
 To fit the entire genome (without Y and M chromosomes) using the sparse implementation and initialization to a lower resolution fit, run:
 
 ```
-python gc_model.py -m data.mcool -kb 50000 -ch all_noym -n 4 -o all_4st_50000.npz --init all_4st_250000.npz --init-stretch-by 5 --sparse --zero-sample 626412308 # zero-sample value taken from nnz entry in cooler info
+python gc_model.py -m data.mcool -kb 50000 -ch all_no_ym -n 4 -o all_4st_50000.npz --init all_4st_250000.npz --init-stretch-by 5 --sparse --zero-sample 626412308 # zero-sample value taken from nnz entry in cooler info
 ```
 
 The resulting fit can be used for another round of stretching, to get a higher resolution fit.
